@@ -147,10 +147,10 @@ export function GanttChart({ steps }: Props) {
                           left: `${left}%`,
                           width: `${Math.max(width, 1.5)}%`,
                         }}
-                        title={`T${step.tableNumber} · ${step.dishName} · ${stepLabels[step.kind]}`}
+                        title={`T${step.tableNumber} · ${step.recipeName} · ${stepLabels[step.kind]}`}
                       >
                         <span className="truncate">
-                          T{step.tableNumber} · {step.dishName}
+                          T{step.tableNumber} · {step.recipeName}
                         </span>
                       </div>
                     );

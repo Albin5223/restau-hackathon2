@@ -1,6 +1,6 @@
 import type {
-  Dish,
   Order,
+  Recipe,
   Resource,
   ScheduledStep,
   SimulationMetrics,
@@ -23,61 +23,65 @@ export const resources: Resource[] = [
   { id: "four-1", kind: "four", label: "Four" },
 ];
 
-export const menu: Dish[] = [
+// Aligned with the recipe_documents table.
+// `deps` are 1-based positions in `etapes` (cf. seed `steak frites`).
+export const initialRecipes: Recipe[] = [
   {
-    id: "magret",
+    id: 1,
     name: "Magret de canard",
-    category: "viande",
-    description: "Magret rosé, jus à l'orange, écrasé de pommes de terre",
-    steps: [
-      { kind: "preparation", durationMin: 6, resourceKinds: ["commis"] },
-      { kind: "cuisson", durationMin: 9, resourceKinds: ["plaque"] },
-      { kind: "dressage", durationMin: 2, resourceKinds: ["chef"] },
-    ],
+    tasks: {
+      etapes: [
+        { nom: "Préparer magret", ressource: ["commis"], duree: 6, deps: [] },
+        { nom: "Préparer écrasé", ressource: ["commis"], duree: 4, deps: [] },
+        { nom: "Cuire magret", ressource: ["plaque"], duree: 9, deps: [1] },
+        { nom: "Cuire écrasé", ressource: ["plaque"], duree: 5, deps: [2] },
+        { nom: "Dresser l'assiette", ressource: ["chef"], duree: 2, deps: [3, 4] },
+      ],
+    },
   },
   {
-    id: "saint-jacques",
+    id: 2,
     name: "Coquilles Saint-Jacques",
-    category: "poisson",
-    description: "Saint-Jacques snackées, mousseline de panais",
-    steps: [
-      { kind: "preparation", durationMin: 5, resourceKinds: ["commis"] },
-      { kind: "cuisson", durationMin: 2, resourceKinds: ["plaque"] },
-      { kind: "dressage", durationMin: 2, resourceKinds: ["chef"] },
-    ],
+    tasks: {
+      etapes: [
+        { nom: "Préparer Saint-Jacques", ressource: ["commis"], duree: 5, deps: [] },
+        { nom: "Snacker Saint-Jacques", ressource: ["plaque"], duree: 2, deps: [1] },
+        { nom: "Dresser l'assiette", ressource: ["chef"], duree: 2, deps: [2] },
+      ],
+    },
   },
   {
-    id: "boeuf-bourguignon",
+    id: 3,
     name: "Bœuf bourguignon",
-    category: "viande",
-    description: "Joue de bœuf braisée, carottes glacées, pommes vapeur",
-    steps: [
-      { kind: "preparation", durationMin: 4, resourceKinds: ["commis"] },
-      { kind: "cuisson", durationMin: 12, resourceKinds: ["four"] },
-      { kind: "dressage", durationMin: 2, resourceKinds: ["chef"] },
-    ],
+    tasks: {
+      etapes: [
+        { nom: "Préparer joue de bœuf", ressource: ["commis"], duree: 4, deps: [] },
+        { nom: "Braiser au four", ressource: ["four"], duree: 12, deps: [1] },
+        { nom: "Dresser l'assiette", ressource: ["chef"], duree: 2, deps: [2] },
+      ],
+    },
   },
   {
-    id: "risotto",
+    id: 4,
     name: "Risotto à la truffe",
-    category: "vegetarien",
-    description: "Risotto carnaroli, copeaux de truffe noire, parmesan 24 mois",
-    steps: [
-      { kind: "preparation", durationMin: 3, resourceKinds: ["commis"] },
-      { kind: "cuisson", durationMin: 7, resourceKinds: ["plaque"] },
-      { kind: "dressage", durationMin: 2, resourceKinds: ["chef"] },
-    ],
+    tasks: {
+      etapes: [
+        { nom: "Préparer riz et bouillon", ressource: ["commis"], duree: 3, deps: [] },
+        { nom: "Cuire risotto", ressource: ["plaque"], duree: 7, deps: [1] },
+        { nom: "Dresser l'assiette", ressource: ["chef"], duree: 2, deps: [2] },
+      ],
+    },
   },
   {
-    id: "loup",
+    id: 5,
     name: "Loup en croûte de sel",
-    category: "poisson",
-    description: "Loup entier, croûte de sel aux herbes, légumes vapeur",
-    steps: [
-      { kind: "preparation", durationMin: 8, resourceKinds: ["commis"] },
-      { kind: "cuisson", durationMin: 15, resourceKinds: ["four"] },
-      { kind: "dressage", durationMin: 3, resourceKinds: ["chef"] },
-    ],
+    tasks: {
+      etapes: [
+        { nom: "Préparer loup", ressource: ["commis"], duree: 8, deps: [] },
+        { nom: "Cuire au four", ressource: ["four"], duree: 15, deps: [1] },
+        { nom: "Dresser l'assiette", ressource: ["chef"], duree: 3, deps: [2] },
+      ],
+    },
   },
 ];
 
@@ -99,8 +103,8 @@ export const orders: Order[] = [
     placedAt: t(-25),
     targetServeAt: t(-10),
     items: [
-      { dishId: "magret", guest: "Couvert 1" },
-      { dishId: "saint-jacques", guest: "Couvert 2" },
+      { recipeName: "Magret de canard", guest: "Couvert 1" },
+      { recipeName: "Coquilles Saint-Jacques", guest: "Couvert 2" },
     ],
   },
   {
@@ -109,10 +113,10 @@ export const orders: Order[] = [
     placedAt: t(-8),
     targetServeAt: t(6),
     items: [
-      { dishId: "magret", guest: "Couvert 1" },
-      { dishId: "magret", guest: "Couvert 2" },
-      { dishId: "saint-jacques", guest: "Couvert 3" },
-      { dishId: "risotto", guest: "Couvert 4" },
+      { recipeName: "Magret de canard", guest: "Couvert 1" },
+      { recipeName: "Magret de canard", guest: "Couvert 2" },
+      { recipeName: "Coquilles Saint-Jacques", guest: "Couvert 3" },
+      { recipeName: "Risotto à la truffe", guest: "Couvert 4" },
     ],
   },
   {
@@ -121,9 +125,9 @@ export const orders: Order[] = [
     placedAt: t(-2),
     targetServeAt: t(14),
     items: [
-      { dishId: "boeuf-bourguignon", guest: "Couvert 1" },
-      { dishId: "loup", guest: "Couvert 2" },
-      { dishId: "risotto", guest: "Couvert 3" },
+      { recipeName: "Bœuf bourguignon", guest: "Couvert 1" },
+      { recipeName: "Loup en croûte de sel", guest: "Couvert 2" },
+      { recipeName: "Risotto à la truffe", guest: "Couvert 3" },
     ],
   },
   {
@@ -132,8 +136,8 @@ export const orders: Order[] = [
     placedAt: t(-5),
     targetServeAt: t(5),
     items: [
-      { dishId: "saint-jacques", guest: "Couvert 1" },
-      { dishId: "risotto", guest: "Couvert 2" },
+      { recipeName: "Coquilles Saint-Jacques", guest: "Couvert 1" },
+      { recipeName: "Risotto à la truffe", guest: "Couvert 2" },
     ],
   },
   {
@@ -142,12 +146,12 @@ export const orders: Order[] = [
     placedAt: t(-1),
     targetServeAt: t(18),
     items: [
-      { dishId: "magret", guest: "Couvert 1" },
-      { dishId: "magret", guest: "Couvert 2" },
-      { dishId: "boeuf-bourguignon", guest: "Couvert 3" },
-      { dishId: "boeuf-bourguignon", guest: "Couvert 4" },
-      { dishId: "loup", guest: "Couvert 5" },
-      { dishId: "risotto", guest: "Couvert 6" },
+      { recipeName: "Magret de canard", guest: "Couvert 1" },
+      { recipeName: "Magret de canard", guest: "Couvert 2" },
+      { recipeName: "Bœuf bourguignon", guest: "Couvert 3" },
+      { recipeName: "Bœuf bourguignon", guest: "Couvert 4" },
+      { recipeName: "Loup en croûte de sel", guest: "Couvert 5" },
+      { recipeName: "Risotto à la truffe", guest: "Couvert 6" },
     ],
   },
 ];
@@ -155,50 +159,49 @@ export const orders: Order[] = [
 // Planning précalculé pour le diagramme de Gantt — fictif mais cohérent avec
 // la contrainte « tous les plats d'une table servis ensemble ».
 export const scheduledSteps: ScheduledStep[] = [
-  // Table 3 — service prévu à t+6, on remonte à partir du plus long (magret 9 min cuisson)
-  step("o-102", 3, "magret", "Magret de canard", "preparation", "commis-1", -9, -3),
-  step("o-102", 3, "magret", "Magret de canard", "preparation", "commis-2", -9, -3),
-  step("o-102", 3, "saint-jacques", "Coquilles Saint-Jacques", "preparation", "commis-1", -3, 2),
-  step("o-102", 3, "risotto", "Risotto à la truffe", "preparation", "commis-2", -3, 0),
-  step("o-102", 3, "magret", "Magret de canard", "cuisson", "plaque-1", -5, 4),
-  step("o-102", 3, "magret", "Magret de canard", "cuisson", "plaque-2", -5, 4),
-  step("o-102", 3, "saint-jacques", "Coquilles Saint-Jacques", "cuisson", "plaque-3", 2, 4),
-  step("o-102", 3, "risotto", "Risotto à la truffe", "cuisson", "plaque-3", -3, 4),
-  step("o-102", 3, "magret", "Magret de canard", "dressage", "chef-1", 4, 6),
+  // Table 3 — service prévu à t+6
+  step("o-102", 3, "Magret de canard", "preparation", "commis-1", -9, -3),
+  step("o-102", 3, "Magret de canard", "preparation", "commis-2", -9, -3),
+  step("o-102", 3, "Coquilles Saint-Jacques", "preparation", "commis-1", -3, 2),
+  step("o-102", 3, "Risotto à la truffe", "preparation", "commis-2", -3, 0),
+  step("o-102", 3, "Magret de canard", "cuisson", "plaque-1", -5, 4),
+  step("o-102", 3, "Magret de canard", "cuisson", "plaque-2", -5, 4),
+  step("o-102", 3, "Coquilles Saint-Jacques", "cuisson", "plaque-3", 2, 4),
+  step("o-102", 3, "Risotto à la truffe", "cuisson", "plaque-3", -3, 4),
+  step("o-102", 3, "Magret de canard", "dressage", "chef-1", 4, 6),
 
   // Table 6 — service prévu à t+5
-  step("o-104", 6, "risotto", "Risotto à la truffe", "preparation", "commis-1", -4, -1),
-  step("o-104", 6, "saint-jacques", "Coquilles Saint-Jacques", "preparation", "commis-2", -1, 4),
-  step("o-104", 6, "risotto", "Risotto à la truffe", "cuisson", "plaque-1", -1, 3),
-  step("o-104", 6, "saint-jacques", "Coquilles Saint-Jacques", "cuisson", "plaque-2", 1, 3),
-  step("o-104", 6, "risotto", "Risotto à la truffe", "dressage", "chef-1", 3, 5),
+  step("o-104", 6, "Risotto à la truffe", "preparation", "commis-1", -4, -1),
+  step("o-104", 6, "Coquilles Saint-Jacques", "preparation", "commis-2", -1, 4),
+  step("o-104", 6, "Risotto à la truffe", "cuisson", "plaque-1", -1, 3),
+  step("o-104", 6, "Coquilles Saint-Jacques", "cuisson", "plaque-2", 1, 3),
+  step("o-104", 6, "Risotto à la truffe", "dressage", "chef-1", 3, 5),
 
   // Table 4 — service prévu à t+14
-  step("o-103", 4, "boeuf-bourguignon", "Bœuf bourguignon", "preparation", "commis-1", 0, 4),
-  step("o-103", 4, "loup", "Loup en croûte de sel", "preparation", "commis-2", -1, 7),
-  step("o-103", 4, "risotto", "Risotto à la truffe", "preparation", "commis-1", 4, 7),
-  step("o-103", 4, "boeuf-bourguignon", "Bœuf bourguignon", "cuisson", "four-1", -1, 11),
-  step("o-103", 4, "loup", "Loup en croûte de sel", "cuisson", "four-1", -3, 12),
-  step("o-103", 4, "risotto", "Risotto à la truffe", "cuisson", "plaque-1", 5, 12),
-  step("o-103", 4, "boeuf-bourguignon", "Bœuf bourguignon", "dressage", "chef-1", 12, 14),
+  step("o-103", 4, "Bœuf bourguignon", "preparation", "commis-1", 0, 4),
+  step("o-103", 4, "Loup en croûte de sel", "preparation", "commis-2", -1, 7),
+  step("o-103", 4, "Risotto à la truffe", "preparation", "commis-1", 4, 7),
+  step("o-103", 4, "Bœuf bourguignon", "cuisson", "four-1", -1, 11),
+  step("o-103", 4, "Loup en croûte de sel", "cuisson", "four-1", -3, 12),
+  step("o-103", 4, "Risotto à la truffe", "cuisson", "plaque-1", 5, 12),
+  step("o-103", 4, "Bœuf bourguignon", "dressage", "chef-1", 12, 14),
 
   // Table 8 — service prévu à t+18
-  step("o-105", 8, "magret", "Magret de canard", "preparation", "commis-1", 7, 13),
-  step("o-105", 8, "boeuf-bourguignon", "Bœuf bourguignon", "preparation", "commis-2", 7, 11),
-  step("o-105", 8, "loup", "Loup en croûte de sel", "preparation", "commis-1", 13, 17),
-  step("o-105", 8, "risotto", "Risotto à la truffe", "preparation", "commis-2", 11, 14),
-  step("o-105", 8, "magret", "Magret de canard", "cuisson", "plaque-2", 9, 18),
-  step("o-105", 8, "boeuf-bourguignon", "Bœuf bourguignon", "cuisson", "four-1", 13, 18),
-  step("o-105", 8, "loup", "Loup en croûte de sel", "cuisson", "four-1", 13, 18),
-  step("o-105", 8, "risotto", "Risotto à la truffe", "cuisson", "plaque-3", 14, 18),
-  step("o-105", 8, "magret", "Magret de canard", "dressage", "chef-1", 16, 18),
+  step("o-105", 8, "Magret de canard", "preparation", "commis-1", 7, 13),
+  step("o-105", 8, "Bœuf bourguignon", "preparation", "commis-2", 7, 11),
+  step("o-105", 8, "Loup en croûte de sel", "preparation", "commis-1", 13, 17),
+  step("o-105", 8, "Risotto à la truffe", "preparation", "commis-2", 11, 14),
+  step("o-105", 8, "Magret de canard", "cuisson", "plaque-2", 9, 18),
+  step("o-105", 8, "Bœuf bourguignon", "cuisson", "four-1", 13, 18),
+  step("o-105", 8, "Loup en croûte de sel", "cuisson", "four-1", 13, 18),
+  step("o-105", 8, "Risotto à la truffe", "cuisson", "plaque-3", 14, 18),
+  step("o-105", 8, "Magret de canard", "dressage", "chef-1", 16, 18),
 ];
 
 function step(
   orderId: string,
   tableNumber: number,
-  dishId: string,
-  dishName: string,
+  recipeName: string,
   kind: "preparation" | "cuisson" | "dressage",
   resourceId: string,
   startOffsetMin: number,
@@ -212,11 +215,10 @@ function step(
   if (endAt < now) status = "termine";
   else if (startAt <= now) status = "en_cours";
   return {
-    id: `${orderId}-${dishId}-${kind}-${resourceId}-${startOffsetMin}`,
+    id: `${orderId}-${recipeName}-${kind}-${resourceId}-${startOffsetMin}`,
     orderId,
     tableNumber,
-    dishId,
-    dishName,
+    recipeName,
     kind,
     resourceId,
     resourceLabel: resource.label,
@@ -242,14 +244,14 @@ export const simulationMetrics: SimulationMetrics = {
   ],
 };
 
-export function getDish(id: string) {
-  return menu.find((d) => d.id === id);
-}
-
-export function getTable(id: string) {
-  return tables.find((t) => t.id === id);
+export function findRecipeByName(recipes: Recipe[], name: string) {
+  return recipes.find((r) => r.name === name);
 }
 
 export function getOrder(id: string) {
   return orders.find((o) => o.id === id);
+}
+
+export function getTable(id: string) {
+  return tables.find((t) => t.id === id);
 }

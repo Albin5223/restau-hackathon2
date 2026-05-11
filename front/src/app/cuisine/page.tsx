@@ -54,7 +54,7 @@ export default function CuisinePage() {
                     {stepLabel[step.kind]}
                   </span>
                   <span className="flex-1 text-zinc-900 dark:text-zinc-100">
-                    <strong>Table {step.tableNumber}</strong> · {step.dishName}
+                    <strong>Table {step.tableNumber}</strong> · {step.recipeName}
                   </span>
                   <span className="text-zinc-500">{step.resourceLabel}</span>
                 </li>

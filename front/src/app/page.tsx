@@ -1,6 +1,8 @@
+"use client";
+
 import { PageHeader } from "@/components/PageHeader";
+import { useRecipes } from "@/components/RecipesProvider";
 import {
-  menu,
   orders,
   scheduledSteps,
   simulationMetrics,
@@ -32,6 +34,7 @@ function StatCard({
 }
 
 export default function Home() {
+  const { recipes } = useRecipes();
   const occupied = tables.filter((t) => t.status !== "libre").length;
   const inPrep = tables.filter((t) => t.status === "en_preparation").length;
   const upcomingServes = scheduledSteps
@@ -60,7 +63,7 @@ export default function Home() {
           />
           <StatCard
             label="Plats au menu"
-            value={`${menu.length}`}
+            value={`${recipes.length}`}
             hint="Plats principaux uniquement"
           />
           <StatCard
@@ -92,7 +95,7 @@ export default function Home() {
                       <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                         Table {step.tableNumber}
                       </p>
-                      <p className="text-xs text-zinc-500">{step.dishName}</p>
+                      <p className="text-xs text-zinc-500">{step.recipeName}</p>
                     </div>
                     <span className="font-mono text-sm tabular-nums text-zinc-700 dark:text-zinc-300">
                       {date.toLocaleTimeString("fr-FR", {

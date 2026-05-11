@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { getDish, getOrder, menu, tables as initialTables } from "@/lib/mockData";
+import { getOrder, tables as initialTables } from "@/lib/mockData";
+import { useRecipes } from "@/components/RecipesProvider";
 import type { Table, TableStatus } from "@/lib/types";
 
 const statusLabels: Record<TableStatus, string> = {
@@ -125,6 +126,7 @@ function TableDetail({
   onSeat: (partySize: number) => void;
   onClear: () => void;
 }) {
+  const { recipes, getRecipe } = useRecipes();
   const order = table.orderId ? getOrder(table.orderId) : null;
 
   return (
@@ -164,11 +166,11 @@ function TableDetail({
           </p>
           <ul className="space-y-1 text-sm">
             {order.items.map((item, i) => {
-              const dish = getDish(item.dishId);
+              const recipe = getRecipe(item.recipeName);
               return (
                 <li key={i} className="flex justify-between">
                   <span className="text-zinc-900 dark:text-zinc-100">
-                    {dish?.name ?? "Plat inconnu"}
+                    {recipe?.name ?? item.recipeName}
                   </span>
                   <span className="text-zinc-500">{item.guest}</span>
                 </li>
@@ -191,7 +193,7 @@ function TableDetail({
             Ajouter une commande
           </p>
           <p className="text-sm text-zinc-500">
-            {menu.length} plats disponibles au menu (passage via la cuisine).
+            {recipes.length} plats disponibles au menu (passage via la cuisine).
           </p>
         </div>
       ) : null}

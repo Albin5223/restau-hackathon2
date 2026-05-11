@@ -1,5 +1,15 @@
 package fr.ultime.restoptim;
 
+import fr.ultime.restoptim.domain.DishJob;
+import fr.ultime.restoptim.domain.DishTask;
+import fr.ultime.restoptim.domain.OrderRequest;
+import fr.ultime.restoptim.domain.OrderSchedule;
+import fr.ultime.restoptim.domain.Resource;
+import fr.ultime.restoptim.domain.ScheduledTask;
+import fr.ultime.restoptim.domain.TaskKind;
+import fr.ultime.restoptim.scheduler.KitchenScheduler;
+import fr.ultime.restoptim.scheduler.SchedulerConfig;
+
 import java.util.List;
 
 /**

@@ -3,6 +3,8 @@ package fr.ultime.restoptim.domain.service;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class CommandeService {
 
+    private static final Logger logger = LoggerFactory.getLogger(CommandeService.class);
     private final Tables tables;
     private final Dishes dishes;
     private final Commandes commandes;
@@ -40,28 +43,52 @@ public class CommandeService {
 
     @Transactional
     public CommandeResult placeCommande(int tableId, List<Integer> dishIds) {
-        Table table = tables.getTableById(tableId)
-                .orElseThrow(() -> new IllegalArgumentException("Table introuvable : " + tableId));
-        if (table.status() != TableStatus.LIBRE && table.status() != TableStatus.COMMANDE_PASSEE) {
-            throw new IllegalStateException("La table " + table.number() + " n'est pas disponible.");
+        logger.info("[COMMANDE-SERVICE] Début placeCommande: tableId={}, dishCount={}", tableId, dishIds.size());
+        try {
+            Table table = tables.getTableById(tableId)
+                    .orElseThrow(() -> new IllegalArgumentException("Table introuvable : " + tableId));
+            logger.debug("[COMMANDE-SERVICE] Table trouvée: number={}, status={}", table.number(), table.status());
+            
+            if (table.status() != TableStatus.LIBRE && table.status() != TableStatus.COMMANDE_PASSEE) {
+                logger.warn("[COMMANDE-SERVICE] Table indisponible: tableId={}, status={}", tableId, table.status());
+                throw new IllegalStateException("La table " + table.number() + " n'est pas disponible.");
+            }
+
+            long now = System.currentTimeMillis();
+            String commandeId = "cmd_" + now;
+            
+            List<DishJob> jobs = buildJobs(dishIds);
+            logger.debug("[COMMANDE-SERVICE] Jobs construits: count={}", jobs.size());
+            
+            List<OccupiedInterval> occupied = buildOccupied(now);
+            logger.debug("[COMMANDE-SERVICE] Intervalles occupés trouvés: count={}", occupied.size());
+
+            logger.debug("[COMMANDE-SERVICE] Appel scheduler.schedule avec orderId={}, jobCount={}", commandeId, jobs.size());
+            OrderSchedule schedule = scheduler.schedule(new OrderRequest(commandeId, jobs), occupied);
+            logger.info("[COMMANDE-SERVICE] Ordonnancement réussi: serviceTime={}min", schedule.serviceTimeMinute());
+
+            String scheduleJson = serialize(schedule);
+            commandes.save(new Commande(commandeId, tableId, now, dishIds, scheduleJson));
+            logger.debug("[COMMANDE-SERVICE] Commande sauvegardée: commandeId={}", commandeId);
+
+            tables.save(new Table(table.id(), table.number(), table.seats(),
+                    TableStatus.EN_PREPARATION, table.partySize(), commandeId));
+            logger.debug("[COMMANDE-SERVICE] Table mise à jour: tableId={}, status=EN_PREPARATION", tableId);
+
+            long serviceTimeAt = now + schedule.serviceTimeMinute() * 60_000L;
+            List<GanttTask> ganttTasks = toGanttTasks(commandeId, table.number(), schedule, now);
+            logger.info("[COMMANDE-SERVICE] Fin placeCommande: commandeId={}, serviceTimeAtMs={}, ganttTaskCount={}", commandeId, serviceTimeAt, ganttTasks.size());
+            return new CommandeResult(commandeId, table.number(), serviceTimeAt, ganttTasks);
+        } catch (IllegalArgumentException e) {
+            logger.error("[COMMANDE-SERVICE] Erreur IllegalArgumentException: tableId={}, message={}", tableId, e.getMessage());
+            throw e;
+        } catch (IllegalStateException e) {
+            logger.error("[COMMANDE-SERVICE] Erreur IllegalStateException: tableId={}, message={}", tableId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            logger.error("[COMMANDE-SERVICE] Erreur inattendue: tableId={}, message={}", tableId, e.getMessage(), e);
+            throw e;
         }
-
-        long now = System.currentTimeMillis();
-        String commandeId = "cmd_" + now;
-        List<DishJob> jobs = buildJobs(dishIds);
-        List<OccupiedInterval> occupied = buildOccupied(now);
-
-        OrderSchedule schedule = scheduler.schedule(new OrderRequest(commandeId, jobs), occupied);
-
-        String scheduleJson = serialize(schedule);
-        commandes.save(new Commande(commandeId, tableId, now, dishIds, scheduleJson));
-
-        tables.save(new Table(table.id(), table.number(), table.seats(),
-                TableStatus.EN_PREPARATION, table.partySize(), commandeId));
-
-        long serviceTimeAt = now + schedule.serviceTimeMinute() * 60_000L;
-        List<GanttTask> ganttTasks = toGanttTasks(commandeId, table.number(), schedule, now);
-        return new CommandeResult(commandeId, table.number(), serviceTimeAt, ganttTasks);
     }
 
     public List<GanttTask> getAllActiveGanttTasks() {

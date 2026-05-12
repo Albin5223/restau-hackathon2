@@ -16,3 +16,8 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.community.dialect.SQLiteDialect
+
+logging:
+  level:
+    fr.ultime.restoptim: DEBUG
+    org.springframework.web: INFO

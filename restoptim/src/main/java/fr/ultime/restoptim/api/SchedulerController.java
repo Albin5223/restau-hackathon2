@@ -35,10 +35,8 @@ public class SchedulerController {
         List<DishJob> jobs = new ArrayList<>();
         for (int index = 0; index < body.dishIds().size(); index++) {
             int dishId = body.dishIds().get(index);
-            Dish dish = dishes.getDishById(dishId);
-            if (dish == null) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + dishId);
-            }
+            Dish dish = dishes.getDishById(dishId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + dishId));
             jobs.add(new DishJob("job_" + index, dish));
         }
 

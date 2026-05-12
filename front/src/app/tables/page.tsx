@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { getOrder, tables as initialTables } from "@/lib/mockData";
-import { useRecipes } from "@/components/RecipesProvider";
-import type { Table, TableStatus } from "@/lib/types";
+import { api } from "@/lib/api";
+import type { BackendTable, TableStatus } from "@/lib/types";
 
 const statusLabels: Record<TableStatus, string> = {
   libre: "Libre",
@@ -16,51 +15,55 @@ const statusLabels: Record<TableStatus, string> = {
 const statusBadge: Record<TableStatus, string> = {
   libre: "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300",
   commande_passee: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
-  en_preparation:
-    "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  servie:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  en_preparation: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  servie: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
 };
 
 export default function TablesPage() {
-  const [tables, setTables] = useState<Table[]>(initialTables);
-  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [tables, setTables] = useState<BackendTable[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  const loadTables = useCallback(async () => {
+    try {
+      setTables(await api.tables.list());
+    } catch {
+      // backend non démarré
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTables();
+    const id = setInterval(loadTables, 10_000);
+    return () => clearInterval(id);
+  }, [loadTables]);
 
   const selected = useMemo(
-    () => tables.find((t) => t.id === selectedTableId) ?? null,
-    [tables, selectedTableId],
+    () => tables.find((t) => t.id === selectedId) ?? null,
+    [tables, selectedId],
   );
 
-  function seatGuests(tableId: string, partySize: number) {
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === tableId
-          ? { ...t, status: "commande_passee", partySize }
-          : t,
-      ),
-    );
+  async function seatGuests(tableId: number, partySize: number) {
+    await api.tables.install(tableId, partySize);
+    await loadTables();
   }
 
-  function clearTable(tableId: string) {
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === tableId
-          ? {
-              id: t.id,
-              number: t.number,
-              seats: t.seats,
-              status: "libre",
-            }
-          : t,
-      ),
-    );
+  async function clearTable(tableId: number) {
+    await api.tables.release(tableId);
+    await loadTables();
   }
+
+  async function serveTable(tableId: number) {
+    await api.tables.serve(tableId);
+    await loadTables();
+  }
+
+  const libres = tables.filter((t) => t.status === "libre").length;
 
   return (
     <>
       <PageHeader
         title="Salle"
-        subtitle={`${tables.length} tables — ${tables.filter((t) => t.status === "libre").length} libre(s)`}
+        subtitle={`${tables.length} tables — ${libres} libre(s)`}
       />
 
       <div className="grid grid-cols-1 gap-6 p-8 lg:grid-cols-[1fr_360px]">
@@ -69,9 +72,9 @@ export default function TablesPage() {
             {tables.map((table) => (
               <button
                 key={table.id}
-                onClick={() => setSelectedTableId(table.id)}
+                onClick={() => setSelectedId(table.id)}
                 className={`flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors ${
-                  selectedTableId === table.id
+                  selectedId === table.id
                     ? "border-zinc-900 ring-2 ring-zinc-900 dark:border-zinc-50 dark:ring-zinc-50"
                     : "border-zinc-200 hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
                 } bg-white dark:bg-zinc-950`}
@@ -105,6 +108,7 @@ export default function TablesPage() {
               table={selected}
               onSeat={(n) => seatGuests(selected.id, n)}
               onClear={() => clearTable(selected.id)}
+              onServe={() => serveTable(selected.id)}
             />
           ) : (
             <p className="text-sm text-zinc-500">
@@ -121,14 +125,13 @@ function TableDetail({
   table,
   onSeat,
   onClear,
+  onServe,
 }: {
-  table: Table;
+  table: BackendTable;
   onSeat: (partySize: number) => void;
   onClear: () => void;
+  onServe: () => void;
 }) {
-  const { recipes, getRecipe } = useRecipes();
-  const order = table.orderId ? getOrder(table.orderId) : null;
-
   return (
     <div className="flex flex-col gap-4">
       <header>
@@ -159,53 +162,45 @@ function TableDetail({
         </div>
       ) : null}
 
-      {order ? (
+      {table.partySize && table.status !== "libre" ? (
         <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Commande {order.id}
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Groupe en place
           </p>
-          <ul className="space-y-1 text-sm">
-            {order.items.map((item, i) => {
-              const recipe = getRecipe(item.recipeName);
-              return (
-                <li key={i} className="flex justify-between">
-                  <span className="text-zinc-900 dark:text-zinc-100">
-                    {recipe?.name ?? item.recipeName}
-                  </span>
-                  <span className="text-zinc-500">{item.guest}</span>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="mt-3 text-xs text-zinc-500">
-            Servi à{" "}
-            <span className="font-mono tabular-nums">
-              {new Date(order.targetServeAt).toLocaleTimeString("fr-FR", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
+          <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+            {table.partySize} couvert(s)
           </p>
-        </div>
-      ) : table.status !== "libre" ? (
-        <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Ajouter une commande
-          </p>
-          <p className="text-sm text-zinc-500">
-            {recipes.length} plats disponibles au menu (passage via la cuisine).
-          </p>
+          {table.commandeId ? (
+            <p className="mt-1 text-xs text-zinc-500">
+              Commande : <span className="font-mono">{table.commandeId}</span>
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-zinc-500">
+              Passez la commande depuis la page{" "}
+              <span className="font-medium">Simulation → Mode manuel</span>.
+            </p>
+          )}
         </div>
       ) : null}
 
-      {table.status !== "libre" ? (
-        <button
-          onClick={onClear}
-          className="mt-auto rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
-        >
-          Libérer la table
-        </button>
-      ) : null}
+      <div className="mt-auto flex flex-col gap-2">
+        {table.status === "en_preparation" ? (
+          <button
+            onClick={onServe}
+            className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+          >
+            Marquer comme servie
+          </button>
+        ) : null}
+        {table.status !== "libre" ? (
+          <button
+            onClick={onClear}
+            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Libérer la table
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

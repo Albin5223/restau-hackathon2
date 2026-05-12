@@ -1,15 +1,20 @@
 package fr.ultime.restoptim.infra.database.repository;
 
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
 import fr.ultime.restoptim.domain.model.Dish;
@@ -29,7 +34,7 @@ public class DishRepository implements Dishes {
             "SELECT id, name, tasks FROM recipe_documents WHERE id = ?";
 
     private final JdbcTemplate jdbcTemplate;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     public List<Dish> getDishes() {
@@ -37,9 +42,25 @@ public class DishRepository implements Dishes {
     }
 
     @Override
-    public Dish getDishById(int id) {
-        List<Dish> dishes = jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> mapRowToDish(rs), id);
-        return dishes.stream().findFirst().orElse(null);
+    public Dish save(String name, String tasksJson) {
+        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(conn -> {
+            PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO recipe_documents (name, tasks) VALUES (?, ?)",
+                    Statement.RETURN_GENERATED_KEYS);
+            ps.setString(1, name);
+            ps.setString(2, tasksJson);
+            return ps;
+        }, keyHolder);
+        int id = Objects.requireNonNull(keyHolder.getKey()).intValue();
+        return new Dish(id, name, parseTasks(tasksJson));
+    }
+
+    @Override
+    public Optional<Dish> getDishById(int id) {
+        return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> mapRowToDish(rs), id)
+                .stream()
+                .findFirst();
     }
 
     private Dish mapRowToDish(ResultSet rs) throws SQLException {
@@ -49,7 +70,7 @@ public class DishRepository implements Dishes {
         return new Dish(id, name, parseTasks(tasksJson));
     }
 
-    private List<Task> parseTasks(String tasksJson) throws SQLException {
+    private List<Task> parseTasks(String tasksJson) {
         try {
             JsonNode root = objectMapper.readTree(tasksJson);
             JsonNode etapes = root.path("etapes");
@@ -67,7 +88,7 @@ public class DishRepository implements Dishes {
             }
             return inferPlatingIfMissing(tasks);
         } catch (Exception exception) {
-            throw new SQLException("Impossible de parser le JSON des etapes", exception);
+            throw new IllegalArgumentException("JSON de recette invalide : " + tasksJson, exception);
         }
     }
 
@@ -79,6 +100,7 @@ public class DishRepository implements Dishes {
         return switch (raw) {
             case "COOKING", "CUISSON" -> TaskKind.COOKING;
             case "PLATING", "DRESSAGE" -> TaskKind.PLATING;
+            case "PREPARATION" -> TaskKind.PREPARATION;
             default -> TaskKind.OTHER;
         };
     }
@@ -106,23 +128,18 @@ public class DishRepository implements Dishes {
     }
 
     /**
-     * Si aucune tache n'est marquee PLATING (cas des recettes sans champ "kind"),
-     * on promeut la derniere tache en PLATING pour satisfaire le scheduler.
+     * Si aucune étape n'est marquée PLATING, la dernière est promue automatiquement.
+     * Nécessaire pour les recettes sans champ "kind" explicite.
      */
     private List<Task> inferPlatingIfMissing(List<Task> tasks) {
-        boolean hasPlating = tasks.stream().anyMatch(task -> task.kind() == TaskKind.PLATING);
-        if (hasPlating || tasks.isEmpty()) {
+        if (tasks.isEmpty() || tasks.stream().anyMatch(t -> t.kind() == TaskKind.PLATING)) {
             return tasks;
         }
         int lastIndex = tasks.size() - 1;
         Task last = tasks.get(lastIndex);
         tasks.set(lastIndex, new Task(
-                last.id(),
-                last.name(),
-                TaskKind.PLATING,
-                last.resources(),
-                last.duration(),
-                last.dependencies()));
+                last.id(), last.name(), TaskKind.PLATING,
+                last.resources(), last.duration(), last.dependencies()));
         return tasks;
     }
 }

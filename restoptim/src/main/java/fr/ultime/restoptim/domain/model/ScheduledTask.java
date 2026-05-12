@@ -11,5 +11,6 @@ public record ScheduledTask(
         TaskKind kind,
         long startMinute,
         long endMinute,
-        List<ResourceType> resources) {
+        List<ResourceType> resources,
+        String assignedResourceName) {
 }

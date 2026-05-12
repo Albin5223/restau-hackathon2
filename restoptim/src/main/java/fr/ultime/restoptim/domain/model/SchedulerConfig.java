@@ -4,7 +4,10 @@ public record SchedulerConfig(
         double maxSolveSeconds,
         int toleranceCookingBeforePlatingMinutes,
         int tolerancePlatingBeforeServiceMinutes,
-        int horizonPaddingMinutes) {
+        int horizonPaddingMinutes,
+        long objectiveWeightServiceTime,
+        long objectiveWeightServiceGap,
+        long objectiveWeightCookingGap) {
 
     public SchedulerConfig {
         if (maxSolveSeconds <= 0.0) {
@@ -18,6 +21,9 @@ public record SchedulerConfig(
         }
         if (horizonPaddingMinutes < 0) {
             throw new IllegalArgumentException("horizonPaddingMinutes doit etre >= 0.");
+        }
+        if (objectiveWeightServiceTime <= 0 || objectiveWeightServiceGap <= 0 || objectiveWeightCookingGap <= 0) {
+            throw new IllegalArgumentException("Les poids de l'objectif doivent etre > 0.");
         }
     }
 }

@@ -1,163 +1,192 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { ScheduledStep, StepKind } from "@/lib/types";
-import { resources, SERVICE_START } from "@/lib/mockData";
+import { useEffect, useMemo, useState } from "react";
+import type { ScheduledStep } from "@/lib/types";
 
-const stepColors: Record<StepKind, string> = {
-  preparation: "bg-blue-500/80 border-blue-600 text-white",
-  cuisson: "bg-amber-500/80 border-amber-600 text-white",
-  dressage: "bg-emerald-500/80 border-emerald-600 text-white",
-};
+function kindColor(kind: string): string {
+  if (kind === "cuisson") return "bg-amber-500/80 border-amber-600 text-white";
+  if (kind === "dressage") return "bg-emerald-500/80 border-emerald-600 text-white";
+  return "bg-blue-500/80 border-blue-600 text-white";
+}
 
-const stepLabels: Record<StepKind, string> = {
-  preparation: "Préparation",
-  cuisson: "Cuisson",
-  dressage: "Dressage",
-};
+function kindDotColor(kind: string): string {
+  if (kind === "cuisson") return "bg-amber-500/80";
+  if (kind === "dressage") return "bg-emerald-500/80";
+  return "bg-blue-500/80";
+}
+
+function kindLabel(kind: string): string {
+  if (kind === "cuisson") return "Cuisson";
+  if (kind === "dressage") return "Dressage";
+  if (kind === "preparation") return "Préparation";
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
+}
 
 type Props = {
   steps: ScheduledStep[];
 };
 
 export function GanttChart({ steps }: Props) {
-  const [filter, setFilter] = useState<"toutes" | StepKind>("toutes");
+  const [filter, setFilter] = useState<string>("toutes");
+  const [now, setNow] = useState(Date.now());
 
-  const visibleSteps = filter === "toutes"
-    ? steps
-    : steps.filter((s) => s.kind === filter);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
-  const { startMin, endMin } = useMemo(() => {
-    if (steps.length === 0) return { startMin: 0, endMin: 30 };
-    const baseStart = SERVICE_START.getTime();
-    const minStart = Math.min(...steps.map((s) => s.startAt));
-    const maxEnd = Math.max(...steps.map((s) => s.endAt));
+  // Derive available kinds from actual data — never hardcode
+  const availableKinds = useMemo(() => {
+    const seen = new Set<string>();
+    for (const s of steps) seen.add(s.kind);
+    return [...seen];
+  }, [steps]);
+
+  const visibleSteps =
+    filter === "toutes" ? steps : steps.filter((s) => s.kind === filter);
+
+  const { baseTime, endTime } = useMemo(() => {
+    if (steps.length === 0) {
+      const t = Date.now();
+      return { baseTime: t, endTime: t + 30 * 60_000 };
+    }
     return {
-      startMin: Math.floor((minStart - baseStart) / 60_000) - 1,
-      endMin: Math.ceil((maxEnd - baseStart) / 60_000) + 1,
+      baseTime: Math.min(...steps.map((s) => s.startAt)) - 60_000,
+      endTime: Math.max(...steps.map((s) => s.endAt)) + 60_000,
     };
   }, [steps]);
 
-  const totalMin = endMin - startMin;
-  const baseStart = SERVICE_START.getTime();
-  const nowOffsetMin = (Date.now() - baseStart) / 60_000;
+  const totalMs = endTime - baseTime;
 
-  const stepsByResource = resources.map((r) => ({
-    resource: r,
-    steps: visibleSteps.filter((s) => s.resourceId === r.id),
-  }));
+  const rows = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of steps) {
+      if (!seen.has(s.resourceId)) seen.set(s.resourceId, s.resourceLabel);
+    }
+    return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
+  }, [steps]);
 
-  const ticks = Array.from(
-    { length: Math.floor(totalMin / 2) + 1 },
-    (_, i) => startMin + i * 2,
+  const tickCount = Math.max(Math.floor(totalMs / 60_000 / 2), 2);
+  const ticks = Array.from({ length: tickCount + 1 }, (_, i) =>
+    baseTime + (i / tickCount) * totalMs,
   );
+
+  const nowPct = ((now - baseTime) / totalMs) * 100;
+  const showNow = nowPct >= 0 && nowPct <= 100;
+
+  if (steps.length === 0) {
+    return (
+      <div className="flex h-32 items-center justify-center rounded-lg border border-zinc-200 bg-white text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950">
+        Aucune tâche en cours — passez une commande depuis la page Simulation.
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex gap-2">
-          {(["toutes", "preparation", "cuisson", "dressage"] as const).map(
-            (f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  filter === f
-                    ? "bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900"
-                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                }`}
-              >
-                {f === "toutes" ? "Toutes" : stepLabels[f]}
-              </button>
-            ),
-          )}
+          <button
+            onClick={() => setFilter("toutes")}
+            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+              filter === "toutes"
+                ? "bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900"
+                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            }`}
+          >
+            Toutes
+          </button>
+          {availableKinds.map((kind) => (
+            <button
+              key={kind}
+              onClick={() => setFilter(kind)}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                filter === kind
+                  ? "bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900"
+                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              }`}
+            >
+              {kindLabel(kind)}
+            </button>
+          ))}
         </div>
         <div className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
-          <Legend color="bg-blue-500/80" label="Préparation" />
-          <Legend color="bg-amber-500/80" label="Cuisson" />
-          <Legend color="bg-emerald-500/80" label="Dressage" />
+          {availableKinds.map((kind) => (
+            <Legend key={kind} color={kindDotColor(kind)} label={kindLabel(kind)} />
+          ))}
         </div>
       </div>
 
       <div className="overflow-x-auto">
         <div className="min-w-[800px]">
-          <div className="grid grid-cols-[120px_1fr] border-b border-zinc-200 pb-2 dark:border-zinc-800">
+          <div className="grid grid-cols-[140px_1fr] border-b border-zinc-200 pb-2 dark:border-zinc-800">
             <div className="text-xs font-medium uppercase tracking-wider text-zinc-500">
               Ressource
             </div>
             <div className="relative h-6">
-              <div className="absolute inset-0 flex">
-                {ticks.map((tick) => {
-                  const left = ((tick - startMin) / totalMin) * 100;
-                  return (
-                    <div
-                      key={tick}
-                      className="absolute -translate-x-1/2 font-mono text-[10px] tabular-nums text-zinc-400"
-                      style={{ left: `${left}%` }}
-                    >
-                      {formatTickLabel(tick)}
-                    </div>
-                  );
-                })}
-              </div>
+              {ticks.map((ts) => {
+                const left = ((ts - baseTime) / totalMs) * 100;
+                return (
+                  <div
+                    key={ts}
+                    className="absolute -translate-x-1/2 font-mono text-[10px] tabular-nums text-zinc-400"
+                    style={{ left: `${left}%` }}
+                  >
+                    {formatTime(ts)}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           <div className="mt-2">
-            {stepsByResource.map(({ resource, steps: rowSteps }) => (
-              <div
-                key={resource.id}
-                className="grid grid-cols-[120px_1fr] items-center border-b border-zinc-100 py-2 dark:border-zinc-900"
-              >
-                <div className="pr-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  {resource.label}
-                </div>
-                <div className="relative h-8">
-                  <div className="absolute inset-0 flex">
-                    {ticks.map((tick) => {
-                      const left = ((tick - startMin) / totalMin) * 100;
+            {rows.map(({ id, label }) => {
+              const rowSteps = visibleSteps.filter((s) => s.resourceId === id);
+              return (
+                <div
+                  key={id}
+                  className="grid grid-cols-[140px_1fr] items-center border-b border-zinc-100 py-2 dark:border-zinc-900"
+                >
+                  <div className="pr-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    {label}
+                  </div>
+                  <div className="relative h-8">
+                    {ticks.map((ts) => (
+                      <div
+                        key={ts}
+                        className="absolute h-full w-px bg-zinc-100 dark:bg-zinc-900"
+                        style={{ left: `${((ts - baseTime) / totalMs) * 100}%` }}
+                      />
+                    ))}
+                    {showNow && (
+                      <div
+                        className="pointer-events-none absolute top-0 z-10 h-full w-px bg-red-500"
+                        style={{ left: `${nowPct}%` }}
+                      />
+                    )}
+                    {rowSteps.map((step) => {
+                      const left = ((step.startAt - baseTime) / totalMs) * 100;
+                      const width = ((step.endAt - step.startAt) / totalMs) * 100;
                       return (
                         <div
-                          key={tick}
-                          className="absolute h-full w-px bg-zinc-100 dark:bg-zinc-900"
-                          style={{ left: `${left}%` }}
-                        />
+                          key={step.id}
+                          className={`absolute top-1 flex h-6 items-center overflow-hidden rounded border px-1 text-[10px] font-medium leading-none shadow-sm ${kindColor(step.kind)} ${step.status === "termine" ? "opacity-40" : ""}`}
+                          style={{
+                            left: `${left}%`,
+                            width: `${Math.max(width, 1.5)}%`,
+                          }}
+                          title={`T${step.tableNumber} · ${step.recipeName} · ${kindLabel(step.kind)}`}
+                        >
+                          <span className="truncate">
+                            T{step.tableNumber} · {step.recipeName}
+                          </span>
+                        </div>
                       );
                     })}
                   </div>
-                  {nowOffsetMin >= startMin && nowOffsetMin <= endMin ? (
-                    <div
-                      className="pointer-events-none absolute top-0 z-10 h-full w-px bg-red-500"
-                      style={{
-                        left: `${((nowOffsetMin - startMin) / totalMin) * 100}%`,
-                      }}
-                    />
-                  ) : null}
-                  {rowSteps.map((step) => {
-                    const startOffset =
-                      (step.startAt - baseStart) / 60_000;
-                    const endOffset = (step.endAt - baseStart) / 60_000;
-                    const left = ((startOffset - startMin) / totalMin) * 100;
-                    const width = ((endOffset - startOffset) / totalMin) * 100;
-                    return (
-                      <div
-                        key={step.id}
-                        className={`absolute top-1 flex h-6 items-center overflow-hidden rounded border px-1 text-[10px] font-medium leading-none shadow-sm ${stepColors[step.kind]} ${step.status === "termine" ? "opacity-40" : ""}`}
-                        style={{
-                          left: `${left}%`,
-                          width: `${Math.max(width, 1.5)}%`,
-                        }}
-                        title={`T${step.tableNumber} · ${step.recipeName} · ${stepLabels[step.kind]}`}
-                      >
-                        <span className="truncate">
-                          T{step.tableNumber} · {step.recipeName}
-                        </span>
-                      </div>
-                    );
-                  })}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -174,9 +203,8 @@ function Legend({ color, label }: { color: string; label: string }) {
   );
 }
 
-function formatTickLabel(offsetMin: number): string {
-  const d = new Date(SERVICE_START.getTime() + offsetMin * 60_000);
-  return d.toLocaleTimeString("fr-FR", {
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
   });

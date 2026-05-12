@@ -14,11 +14,17 @@ public class SchedulerConfiguration {
             @Value("${restoptim.scheduler.max-solve-seconds:5}") double maxSolveSeconds,
             @Value("${restoptim.scheduler.tolerance-cooking-before-plating-minutes:10}") int toleranceCookingBeforePlatingMinutes,
             @Value("${restoptim.scheduler.tolerance-plating-before-service-minutes:3}") int tolerancePlatingBeforeServiceMinutes,
-            @Value("${restoptim.scheduler.horizon-padding-minutes:15}") int horizonPaddingMinutes) {
+            @Value("${restoptim.scheduler.horizon-padding-minutes:15}") int horizonPaddingMinutes,
+            @Value("${restoptim.scheduler.objective-weight-service-time:1000}") long objectiveWeightServiceTime,
+            @Value("${restoptim.scheduler.objective-weight-service-gap:50}") long objectiveWeightServiceGap,
+            @Value("${restoptim.scheduler.objective-weight-cooking-gap:1}") long objectiveWeightCookingGap) {
         return new SchedulerConfig(
                 maxSolveSeconds,
                 toleranceCookingBeforePlatingMinutes,
                 tolerancePlatingBeforeServiceMinutes,
-                horizonPaddingMinutes);
+                horizonPaddingMinutes,
+                objectiveWeightServiceTime,
+                objectiveWeightServiceGap,
+                objectiveWeightCookingGap);
     }
 }

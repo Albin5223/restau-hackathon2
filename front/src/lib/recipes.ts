@@ -38,6 +38,32 @@ export function computeSchedule(recipe: Recipe): {
   return { totalMin, timings };
 }
 
+export function assignTracks(
+  timings: StepTiming[],
+): { tracks: number[]; numTracks: number } {
+  const tracks: number[] = [];
+  const trackEnds: number[] = [];
+
+  for (let i = 0; i < timings.length; i++) {
+    const { startMin, endMin } = timings[i];
+    let assigned = -1;
+    for (let t = 0; t < trackEnds.length; t++) {
+      if (trackEnds[t] <= startMin) {
+        assigned = t;
+        trackEnds[t] = endMin;
+        break;
+      }
+    }
+    if (assigned === -1) {
+      assigned = trackEnds.length;
+      trackEnds.push(endMin);
+    }
+    tracks[i] = assigned;
+  }
+
+  return { tracks, numTracks: Math.max(1, trackEnds.length) };
+}
+
 export function validateRecipe(
   name: string,
   steps: RecipeStep[],

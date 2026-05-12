@@ -6,6 +6,11 @@ CREATE TABLE IF NOT EXISTS recipe_documents (
     tasks JSON   NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS task_kinds (
+    id   INTEGER PRIMARY KEY,
+    name TEXT    NOT NULL UNIQUE
+);
+
 CREATE TABLE IF NOT EXISTS resource_types (
     resource_type_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name             TEXT NOT NULL UNIQUE

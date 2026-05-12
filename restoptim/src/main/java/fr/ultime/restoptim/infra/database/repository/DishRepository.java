@@ -6,7 +6,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -93,16 +92,10 @@ public class DishRepository implements Dishes {
     }
 
     private TaskKind parseKind(JsonNode kindNode) {
-        if (kindNode == null || kindNode.isMissingNode() || kindNode.isNull()) {
+        if (kindNode == null || kindNode.isMissingNode() || kindNode.isNull() || !kindNode.isInt()) {
             return TaskKind.OTHER;
         }
-        String raw = kindNode.asText("").trim().toUpperCase(Locale.ROOT);
-        return switch (raw) {
-            case "COOKING", "CUISSON" -> TaskKind.COOKING;
-            case "PLATING", "DRESSAGE" -> TaskKind.PLATING;
-            case "PREPARATION" -> TaskKind.PREPARATION;
-            default -> TaskKind.OTHER;
-        };
+        return TaskKind.fromId(kindNode.asInt());
     }
 
     private List<ResourceType> parseResources(JsonNode resourceNode) {

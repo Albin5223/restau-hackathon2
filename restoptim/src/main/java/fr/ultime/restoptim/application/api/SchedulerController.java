@@ -1,4 +1,4 @@
-package fr.ultime.restoptim.api;
+package fr.ultime.restoptim.application.api;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -7,6 +7,7 @@ import fr.ultime.restoptim.domain.model.dish.DishId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import fr.ultime.restoptim.domain.model.task.TaskId;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -112,7 +113,7 @@ public class DishController {
                         t.name(),
                         t.resources().stream().map(ResourceType::name).toList(),
                         t.duration(),
-                        t.dependencies(),
+                        t.dependencies().stream().map(TaskId::value).toList(),
                         t.kind().name().toLowerCase()))
                 .toList();
         return new DishResponse(dish.id().value(), dish.name(), new TasksDto(etapes));
@@ -124,5 +125,5 @@ public class DishController {
 
     public record TasksDto(List<StepDto> etapes) {}
 
-    public record StepDto(String nom, List<String> ressource, int duree, List<Integer> deps, String kind) {}
+    public record StepDto(String nom, List<String> ressource, int duree, List<Long> deps, String kind) {}
 }

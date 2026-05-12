@@ -7,6 +7,9 @@ import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.job.JobId;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 import fr.ultime.restoptim.domain.model.table.TableId;
+import fr.ultime.restoptim.domain.model.task.Task;
+import fr.ultime.restoptim.domain.model.task.TaskId;
+import fr.ultime.restoptim.domain.model.task.TaskType;
 import fr.ultime.restoptim.domain.spi.Orders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,8 +31,6 @@ import fr.ultime.restoptim.domain.model.ResourceType;
 import fr.ultime.restoptim.domain.model.ScheduledTask;
 import fr.ultime.restoptim.domain.model.table.Table;
 import fr.ultime.restoptim.domain.model.table.TableStatus;
-import fr.ultime.restoptim.domain.model.Task;
-import fr.ultime.restoptim.domain.model.TaskKind;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import fr.ultime.restoptim.domain.spi.Tables;
 import fr.ultime.restoptim.scheduler.KitchenScheduler;
@@ -146,8 +147,8 @@ public class OrderService {
                 tasksByJob.computeIfAbsent(st.jobId(), k -> new ArrayList<>()).add(st);
 
             // Classer chaque tâche : TERMINEE / EN_COURS / EN_ATTENTE
-            Map<JobId, Map<Integer, TaskStatus>> status = new HashMap<>();
-            Map<JobId, Map<Integer, Long>> endSec = new HashMap<>(); // fin relative à now (en secondes)
+            Map<JobId, Map<TaskId, TaskStatus>> status = new HashMap<>();
+            Map<JobId, Map<TaskId, Long>> endSec = new HashMap<>(); // fin relative à now (en secondes)
 
             for (ScheduledTask st : schedule.scheduledTasks()) {
                 long absStart = baseMs + st.startSecond() * 1000L;
@@ -191,7 +192,7 @@ public class OrderService {
                 if (dish == null) continue;
 
                 // Dépendances originales par taskId (depuis la définition de la recette)
-                Map<Integer, List<Integer>> depsByTaskId = new HashMap<>();
+                Map<TaskId, List<TaskId>> depsByTaskId = new HashMap<>();
                 dish.tasks().forEach(t -> depsByTaskId.put(t.id(), t.dependencies()));
 
                 List<Task> pendingTaskList = new ArrayList<>();
@@ -201,9 +202,9 @@ public class OrderService {
 
                     hasAnyPending = true;
                     long minStart = 0L;
-                    List<Integer> pendingDeps = new ArrayList<>();
+                    List<TaskId> pendingDeps = new ArrayList<>();
 
-                    for (int depId : depsByTaskId.getOrDefault(st.taskId(), List.of())) {
+                    for (TaskId depId : depsByTaskId.getOrDefault(st.taskId(), List.of())) {
                         TaskStatus depStatus = status.get(origJobId).getOrDefault(depId, TaskStatus.TERMINEE);
                         switch (depStatus) {
                             case TERMINEE -> { /* pas de contrainte */ }
@@ -284,7 +285,7 @@ public class OrderService {
         }
 
         long newServiceTimeSec = merged.stream()
-                .filter(t -> t.kind() == TaskKind.PLATING)
+                .filter(t -> t.kind() == TaskType.PLATING)
                 .mapToLong(ScheduledTask::endSecond)
                 .max().orElse(existing.serviceTimeSecond());
 
@@ -352,7 +353,7 @@ public class OrderService {
         return result;
     }
 
-    private static String kindLabel(TaskKind kind) {
+    private static String kindLabel(TaskType kind) {
         return switch (kind) {
             case COOKING -> "cuisson";
             case PLATING -> "dressage";

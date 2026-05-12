@@ -13,14 +13,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.ultime.restoptim.domain.model.dish.DishId;
+import fr.ultime.restoptim.domain.model.task.TaskId;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
 import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.ResourceType;
-import fr.ultime.restoptim.domain.model.Task;
-import fr.ultime.restoptim.domain.model.TaskKind;
+import fr.ultime.restoptim.domain.model.task.Task;
+import fr.ultime.restoptim.domain.model.task.TaskType;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import lombok.RequiredArgsConstructor;
 
@@ -78,13 +79,22 @@ public class DishRepository implements Dishes {
             List<Task> tasks = new ArrayList<>();
             for (int i = 0; i < etapes.size(); i++) {
                 JsonNode step = etapes.get(i);
-                int taskId = i + 1;
+                long taskId = i + 1;
                 String taskName = step.path("nom").asText();
                 int duration = step.path("duree").asInt();
-                TaskKind kind = parseKind(step.path("kind"));
+                TaskType kind = parseKind(step.path("kind"));
                 List<ResourceType> resources = parseResources(step.path("ressource"));
-                List<Integer> dependencies = parseDependencies(step.path("deps"));
-                tasks.add(new Task(taskId, taskName, kind, resources, duration, dependencies));
+                List<Long> dependencies = parseDependencies(step.path("deps"));
+                tasks.add(new Task(
+                        TaskId.from(taskId),
+                        taskName,
+                        kind,
+                        resources,
+                        duration,
+                        dependencies.stream()
+                                .map(TaskId::from)
+                                .toList()
+                ));
             }
             return inferPlatingIfMissing(tasks);
         } catch (Exception exception) {
@@ -92,17 +102,17 @@ public class DishRepository implements Dishes {
         }
     }
 
-    private TaskKind parseKind(JsonNode kindNode) {
+    private TaskType parseKind(JsonNode kindNode) {
         if (kindNode == null || kindNode.isMissingNode() || kindNode.isNull() || !kindNode.isTextual()) {
-            return TaskKind.OTHER;
+            return TaskType.OTHER;
         }
         if(kindNode.isInt()) {
-            return TaskKind.fromId(kindNode.asInt());
+            return TaskType.fromId(kindNode.asInt());
         }
         try{
-            return TaskKind.valueOf(kindNode.asText().toUpperCase());
+            return TaskType.valueOf(kindNode.asText().toUpperCase());
         } catch (IllegalArgumentException e) {
-            return TaskKind.OTHER;
+            return TaskType.OTHER;
         }
     }
 
@@ -118,11 +128,11 @@ public class DishRepository implements Dishes {
         return resources;
     }
 
-    private List<Integer> parseDependencies(JsonNode depsNode) {
-        List<Integer> dependencies = new ArrayList<>();
+    private List<Long> parseDependencies(JsonNode depsNode) {
+        List<Long> dependencies = new ArrayList<>();
         if (depsNode.isArray()) {
             for (JsonNode dep : depsNode) {
-                dependencies.add(dep.asInt());
+                dependencies.add(dep.asLong());
             }
         }
         return dependencies;
@@ -133,13 +143,13 @@ public class DishRepository implements Dishes {
      * Nécessaire pour les recettes sans champ "kind" explicite.
      */
     private List<Task> inferPlatingIfMissing(List<Task> tasks) {
-        if (tasks.isEmpty() || tasks.stream().anyMatch(t -> t.kind() == TaskKind.PLATING)) {
+        if (tasks.isEmpty() || tasks.stream().anyMatch(t -> t.kind() == TaskType.PLATING)) {
             return tasks;
         }
         int lastIndex = tasks.size() - 1;
         Task last = tasks.get(lastIndex);
         tasks.set(lastIndex, new Task(
-                last.id(), last.name(), TaskKind.PLATING,
+                last.id(), last.name(), TaskType.PLATING,
                 last.resources(), last.duration(), last.dependencies()));
         return tasks;
     }

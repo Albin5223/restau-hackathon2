@@ -57,6 +57,8 @@ jobs:
           file: ./front/Dockerfile.prod
           push: true
           tags: ghcr.io/albin5223/restoptim-front:latest
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://restoptim.albin-paris.fr
       - name: Build and push back
         uses: docker/build-push-action@v5
         with:

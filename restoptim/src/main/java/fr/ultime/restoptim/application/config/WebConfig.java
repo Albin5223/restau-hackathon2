@@ -1,4 +1,4 @@
-package fr.ultime.restoptim.config;
+package fr.ultime.restoptim.application.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;

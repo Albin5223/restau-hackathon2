@@ -6,5 +6,5 @@ public record Table(
         int seats,
         TableStatus status,
         Integer partySize,
-        String commandeId) {
+        String orderId) {
 }

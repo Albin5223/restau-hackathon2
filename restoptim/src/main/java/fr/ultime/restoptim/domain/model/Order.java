@@ -2,7 +2,7 @@ package fr.ultime.restoptim.domain.model;
 
 import java.util.List;
 
-public record Commande(
+public record Order(
         String id,
         int tableId,
         long placedAt,

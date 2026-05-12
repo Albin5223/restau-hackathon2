@@ -1,3 +1,9 @@
+app:
+  cors:
+    allowed-origins: 
+    - "http://localhost:3000"
+    - "https://restoptim.albin-paris.fr"
+
 spring:
   application:
     name: restoptim

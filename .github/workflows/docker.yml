@@ -1,0 +1,52 @@
+name: Docker
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: ["**"] # [main] 
+
+jobs:
+  docker-front:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push front
+        uses: docker/build-push-action@v5
+        with:
+          context: ./front
+          file: ./front/Dockerfile.prod
+          push: true
+          tags: ghcr.io/albin5223/restoptim-front:latest
+
+  docker-back:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push back
+        uses: docker/build-push-action@v5
+        with:
+          context: ./restoptim
+          file: ./restoptim/Dockerfile.prod
+          push: true
+          tags: ghcr.io/albin5223/restoptim-back:latest

@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.model.order.OrderId;
+import fr.ultime.restoptim.domain.model.table.TableId;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,7 +48,7 @@ public class OrderRepository implements Orders {
     public Optional<Order> getOrderById(OrderId orderId) {
         return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> {
             List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, orderId.value());
-            return new Order(OrderId.from(rs.getString("id")), rs.getInt("table_id"),
+            return new Order(OrderId.from(rs.getString("id")), TableId.from(rs.getLong("table_id")),
                     rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
         }, orderId.value()).stream().findFirst();
     }
@@ -67,7 +68,7 @@ public class OrderRepository implements Orders {
         return jdbcTemplate.query(SELECT_ACTIVE, (rs, rowNum) -> {
             OrderId orderId = OrderId.from( rs.getString("id"));
             List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, orderId.value());
-            return new Order(orderId, rs.getInt("table_id"),
+            return new Order(orderId, TableId.from(rs.getLong("table_id")),
                     rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
         });
     }

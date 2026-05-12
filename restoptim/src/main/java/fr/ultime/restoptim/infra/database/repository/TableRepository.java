@@ -6,11 +6,12 @@ import java.util.List;
 import java.util.Optional;
 
 import fr.ultime.restoptim.domain.model.order.OrderId;
+import fr.ultime.restoptim.domain.model.table.TableId;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import fr.ultime.restoptim.domain.model.Table;
-import fr.ultime.restoptim.domain.model.TableStatus;
+import fr.ultime.restoptim.domain.model.table.Table;
+import fr.ultime.restoptim.domain.model.table.TableStatus;
 import fr.ultime.restoptim.domain.spi.Tables;
 import lombok.RequiredArgsConstructor;
 
@@ -33,8 +34,8 @@ public class TableRepository implements Tables {
     }
 
     @Override
-    public Optional<Table> getTableById(int id) {
-        return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> mapRow(rs), id)
+    public Optional<Table> getTableById(TableId id) {
+        return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> mapRow(rs), id.value())
                 .stream()
                 .findFirst();
     }
@@ -52,7 +53,7 @@ public class TableRepository implements Tables {
         int rawPartySize = rs.getInt("party_size");
         Integer partySize = rs.wasNull() ? null : rawPartySize;
         return new Table(
-                rs.getInt("id"),
+                TableId.from((long)rs.getInt("id")),
                 rs.getInt("number"),
                 rs.getInt("seats"),
                 TableStatus.valueOf(rs.getString("status")),

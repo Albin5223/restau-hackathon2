@@ -1,12 +1,18 @@
 // Aligned with the SQL schema:
 //   CREATE TABLE recipe_documents (id INTEGER PK, name TEXT UNIQUE, tasks JSON)
-//   tasks = { etapes: [{ nom, ressource[], duree, deps[] }] }
+//   tasks = { etapes: [{ nom, ressource[], duree, deps[], kind }] }
 // `deps` references step positions in `etapes` (1-based, like the seed data).
 export type RecipeStep = {
   nom: string;
   ressource: string[];
   duree: number;
   deps: number[];
+  kind?: string;
+};
+
+export type ResourceTypeDto = {
+  name: string;
+  capacity: number;
 };
 
 export type Recipe = {
@@ -15,45 +21,23 @@ export type Recipe = {
   tasks: { etapes: RecipeStep[] };
 };
 
-export type ResourceKind = "commis" | "chef" | "plaque" | "four" | "friteuse";
-
-export type Resource = {
-  id: string;
-  kind: ResourceKind;
-  label: string;
-};
-
 export type TableStatus =
   | "libre"
   | "commande_passee"
   | "en_preparation"
   | "servie";
 
-export type Table = {
-  id: string;
+// Backend-aligned table (id is numeric from DB)
+export type BackendTable = {
+  id: number;
   number: number;
   seats: number;
   status: TableStatus;
-  partySize?: number;
-  orderId?: string;
+  partySize: number | null;
+  commandeId: string | null;
 };
 
-export type OrderItem = {
-  recipeName: string;
-  guest: string;
-};
-
-export type Order = {
-  id: string;
-  tableId: string;
-  placedAt: number;
-  targetServeAt: number;
-  items: OrderItem[];
-};
-
-// StepKind kept only for the scheduled / Gantt view colour coding —
-// not part of the persisted recipe schema. The planner labels each
-// scheduled step with one of these kinds when it emits a plan.
+// StepKind used for Gantt colour coding
 export type StepKind = "preparation" | "cuisson" | "dressage";
 
 export type ScheduledStepStatus = "a_venir" | "en_cours" | "termine";
@@ -69,6 +53,31 @@ export type ScheduledStep = {
   startAt: number;
   endAt: number;
   status: ScheduledStepStatus;
+};
+
+// Backend Gantt payload
+export type BackendGanttTask = {
+  id: string;
+  commandeId: string;
+  tableNumber: number;
+  dishName: string;
+  taskName: string;
+  kind: StepKind;
+  resourceName: string;
+  startAt: number;
+  endAt: number;
+};
+
+export type BackendGanttResponse = {
+  tasks: BackendGanttTask[];
+  generatedAt: number;
+};
+
+export type BackendCommandeResult = {
+  commandeId: string;
+  tableNumber: number;
+  serviceTimeAt: number;
+  scheduledTasks: BackendGanttTask[];
 };
 
 export type SimulationMetrics = {

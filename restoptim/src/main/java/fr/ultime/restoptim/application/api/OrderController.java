@@ -41,7 +41,13 @@ public class OrderController {
                 : 1.0;
         try {
             logger.debug("[ORDER] Appel OrderService.placeOrder pour tableId={}", body.tableId());
-            OrderResult result = orderService.placeOrder(TableId.from(body.tableId()), body.dishIds().stream().map(DishId::from).toList(), multiplier);
+            OrderResult result = orderService.placeOrder(
+                    TableId.from(body.tableId()),
+                    body.dishIds().stream()
+                            .map(DishId::from)
+                            .toList(),
+                    multiplier
+            );
             logger.info("[ORDER] Succès: orderId={}, serviceTime={}", result.orderId(), result.serviceTimeAt());
             return result;
         } catch (IllegalArgumentException e) {

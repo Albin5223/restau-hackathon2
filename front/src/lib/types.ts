@@ -47,6 +47,7 @@ export type ScheduledStep = {
   orderId: string;
   tableNumber: number;
   recipeName: string;
+  stepName: string;
   kind: StepKind;
   resourceId: string;
   resourceLabel: string;

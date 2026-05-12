@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { useRecipes } from "@/components/RecipesProvider";
 import { RecipeGraphEditor } from "@/components/RecipeGraphEditor";
-import { allResources, assignTracks, computeSchedule, validateRecipe } from "@/lib/recipes";
+import { allResources, computeSchedule, validateRecipe } from "@/lib/recipes";
 import type { Recipe, RecipeStep, ResourceTypeDto } from "@/lib/types";
 import { api } from "@/lib/api";
 
@@ -136,8 +136,7 @@ export default function MenuPage() {
 // ─── RecipeCard ───────────────────────────────────────────────────────────────
 
 function RecipeCard({ recipe }: { recipe: Recipe }) {
-  const { totalMin, timings } = useMemo(() => computeSchedule(recipe), [recipe]);
-  const { tracks, numTracks } = useMemo(() => assignTracks(timings), [timings]);
+  const { totalMin } = useMemo(() => computeSchedule(recipe), [recipe]);
   const resourceKinds = allResources(recipe);
 
   return (
@@ -155,28 +154,6 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
           {totalMin} min
         </span>
       </header>
-
-      <div
-        className="relative mt-4 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900"
-        style={{ height: `${numTracks * 28 + 4}px` }}
-      >
-        {recipe.tasks.etapes.map((etape, i) => {
-          const t = timings[i];
-          const left = totalMin > 0 ? (t.startMin / totalMin) * 100 : 0;
-          const width = totalMin > 0 ? (etape.duree / totalMin) * 100 : 100;
-          const top = 4 + tracks[i] * 28;
-          return (
-            <div
-              key={i}
-              className={`absolute flex h-6 items-center overflow-hidden rounded px-1 text-[10px] font-medium leading-none text-white shadow-sm ${barColor(i, recipe.tasks.etapes.length)}`}
-              style={{ left: `${left}%`, width: `${Math.max(width, 2)}%`, top: `${top}px` }}
-              title={`${etape.nom} — ${etape.duree} min`}
-            >
-              <span className="truncate">{etape.nom}</span>
-            </div>
-          );
-        })}
-      </div>
 
       <ol className="mt-3 space-y-1 text-xs">
         {recipe.tasks.etapes.map((etape, i) => (
@@ -199,12 +176,6 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
       </ol>
     </article>
   );
-}
-
-function barColor(idx: number, total: number) {
-  if (idx === 0) return "bg-blue-500/80";
-  if (idx === total - 1) return "bg-emerald-500/80";
-  return "bg-amber-500/80";
 }
 
 // ─── RecipeForm (simple mode) ─────────────────────────────────────────────────

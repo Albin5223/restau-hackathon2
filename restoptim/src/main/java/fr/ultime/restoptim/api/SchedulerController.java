@@ -44,7 +44,13 @@ public class SchedulerController {
                 ? "cmd_" + System.currentTimeMillis()
                 : body.orderId();
 
-        return scheduler.schedule(new OrderRequest(orderId, jobs));
+        try {
+            return scheduler.schedule(new OrderRequest(orderId, jobs));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, e.getMessage());
+        }
     }
 
     public record ScheduleRequest(String orderId, List<Integer> dishIds) {

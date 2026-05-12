@@ -3,6 +3,7 @@ package fr.ultime.restoptim.application.api;
 import java.util.ArrayList;
 import java.util.List;
 
+import fr.ultime.restoptim.domain.model.dish.DishId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -22,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import fr.ultime.restoptim.domain.model.Dish;
+import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.ResourceType;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import lombok.RequiredArgsConstructor;
@@ -43,8 +44,8 @@ public class DishController {
     }
 
     @GetMapping("/{id}")
-    public DishResponse get(@PathVariable int id) {
-        return dishes.getDishById(id).map(this::toResponse)
+    public DishResponse get(@PathVariable long id) {
+        return dishes.getDishById(DishId.from(id)).map(this::toResponse)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + id));
     }
 
@@ -169,12 +170,12 @@ public class DishController {
                         t.dependencies(),
                         t.kind().name().toLowerCase()))
                 .toList();
-        return new DishResponse(dish.id(), dish.name(), new TasksDto(etapes));
+        return new DishResponse(dish.id().value(), dish.name(), new TasksDto(etapes));
     }
 
     public record CreateDishRequest(String name, TasksDto tasks) {}
 
-    public record DishResponse(int id, String name, TasksDto tasks) {}
+    public record DishResponse(long id, String name, TasksDto tasks) {}
 
     public record TasksDto(List<StepDto> etapes) {}
 

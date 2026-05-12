@@ -5,7 +5,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.ultime.restoptim.domain.model.GanttResponse;
-import fr.ultime.restoptim.domain.service.CommandeService;
+import fr.ultime.restoptim.domain.service.OrderService;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -13,10 +13,10 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class CuisineController {
 
-    private final CommandeService commandeService;
+    private final OrderService orderService;
 
     @GetMapping("/gantt")
     public GanttResponse gantt() {
-        return new GanttResponse(commandeService.getAllActiveGanttTasks(), System.currentTimeMillis());
+        return new GanttResponse(orderService.getAllActiveGanttTasks(), System.currentTimeMillis());
     }
 }

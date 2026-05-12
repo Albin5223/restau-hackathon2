@@ -217,12 +217,13 @@ public class KitchenScheduler {
         logger.debug("[SCHEDULER] Lancement solveur CP-SAT avec timeout={}s", config.maxSolveSeconds());
 
         CpSolverStatus status = solver.solve(model);
-        logger.info("[SCHEDULER] Solveur terminé: status={}, serviceTime={}min", status, solver.value(serviceTime));
+        logger.info("[SCHEDULER] Solveur terminé: status={}", status);
         if (status != CpSolverStatus.OPTIMAL && status != CpSolverStatus.FEASIBLE) {
             logger.error("[SCHEDULER] Aucune solution trouvée pour orderId={}", order.orderId());
             throw new IllegalStateException(
                     "Aucune solution trouvee. Verifier les tolerances, l'horizon ou la capacite des ressources.");
         }
+        logger.info("[SCHEDULER] Service time: {}min", solver.value(serviceTime));
 
         // Build preliminary list (without instance assignment yet)
         List<ScheduledTask> scheduled = new ArrayList<>();

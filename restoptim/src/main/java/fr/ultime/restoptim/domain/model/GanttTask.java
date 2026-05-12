@@ -1,10 +1,12 @@
 package fr.ultime.restoptim.domain.model;
 
+import fr.ultime.restoptim.domain.model.order.OrderId;
+
 import java.util.List;
 
 public record GanttTask(
         String id,
-        String orderId,
+        OrderId orderId,
         int tableNumber,
         String dishName,
         String taskName,

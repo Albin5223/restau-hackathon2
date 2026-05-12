@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 
+import fr.ultime.restoptim.domain.model.order.OrderId;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -56,6 +57,6 @@ public class TableRepository implements Tables {
                 rs.getInt("seats"),
                 TableStatus.valueOf(rs.getString("status")),
                 partySize,
-                rs.getString("commande_id"));
+                OrderId.from(rs.getString("commande_id")));
     }
 }

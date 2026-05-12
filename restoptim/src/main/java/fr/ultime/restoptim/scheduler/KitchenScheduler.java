@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import fr.ultime.restoptim.domain.model.order.OrderId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -98,8 +99,8 @@ public class KitchenScheduler {
         Map<ResourceType, List<IntervalVar>> intervalsByType = new HashMap<>();
 
         // Par commande : jobId → IntVar start/end du dressage
-        Map<String, Map<String, IntVar>> platingStartByOrder = new HashMap<>();
-        Map<String, Map<String, IntVar>> platingEndByOrder = new HashMap<>();
+        Map<OrderId, Map<String, IntVar>> platingStartByOrder = new HashMap<>();
+        Map<OrderId, Map<String, IntVar>> platingEndByOrder = new HashMap<>();
         List<IntVar> cookingGapVars = new ArrayList<>();
 
         // --- Variables de tâches ---
@@ -197,7 +198,7 @@ public class KitchenScheduler {
         }
 
         // --- Synchronisation par commande : tous les dressages finissent près d'un même serviceTime ---
-        Map<String, IntVar> serviceTimeByOrder = new HashMap<>();
+        Map<OrderId, IntVar> serviceTimeByOrder = new HashMap<>();
         List<IntVar> serviceGapVars = new ArrayList<>();
 
         for (OrderRequest order : orders) {
@@ -309,8 +310,8 @@ public class KitchenScheduler {
 
     // ─── Méthodes utilitaires ─────────────────────────────────────────────────
 
-    private static String key(String orderId, String jobId, int taskId) {
-        return orderId + "§" + jobId + "§" + taskId;
+    private static String key(OrderId orderId, String jobId, int taskId) {
+        return orderId.value() + "§" + jobId + "§" + taskId;
     }
 
     private Map<ResourceType, Integer> capacityByType() {

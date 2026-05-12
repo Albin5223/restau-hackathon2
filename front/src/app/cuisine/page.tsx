@@ -22,6 +22,7 @@ function toScheduledStep(task: BackendGanttTask): ScheduledStep {
     orderId: task.commandeId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
+    stepName: task.taskName,
     kind: task.kind,
     resourceId: task.resourceName,
     resourceLabel: task.resourceName,

@@ -4,36 +4,41 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
 import type { Recipe, RecipeStep } from "@/lib/types";
-import { initialRecipes } from "@/lib/mockData";
+import { api } from "@/lib/api";
 
 type RecipesContextValue = {
   recipes: Recipe[];
-  addRecipe: (name: string, etapes: RecipeStep[]) => Recipe;
+  addRecipe: (name: string, etapes: RecipeStep[]) => Promise<Recipe>;
   getRecipe: (name: string) => Recipe | undefined;
 };
 
 const RecipesContext = createContext<RecipesContextValue | null>(null);
 
 export function RecipesProvider({ children }: { children: React.ReactNode }) {
-  const [recipes, setRecipes] = useState<Recipe[]>(initialRecipes);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
 
-  const addRecipe = useCallback(
-    (name: string, etapes: RecipeStep[]) => {
-      const next: Recipe = {
-        id:
-          recipes.reduce((max, r) => Math.max(max, r.id), 0) + 1,
-        name: name.trim(),
-        tasks: { etapes },
-      };
-      setRecipes((prev) => [...prev, next]);
-      return next;
-    },
-    [recipes],
-  );
+  useEffect(() => {
+    let mounted = true;
+    function load() {
+      api.dishes
+        .list()
+        .then((data) => { if (mounted) setRecipes(data); })
+        .catch(() => { if (mounted) setTimeout(load, 5_000); });
+    }
+    load();
+    return () => { mounted = false; };
+  }, []);
+
+  const addRecipe = useCallback(async (name: string, etapes: RecipeStep[]) => {
+    const created = await api.dishes.create(name, { etapes });
+    setRecipes((prev) => [...prev, created]);
+    return created;
+  }, []);
 
   const getRecipe = useCallback(
     (name: string) => recipes.find((r) => r.name === name),

@@ -1,0 +1,40 @@
+services:
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    container_name: restoptim-front
+    image: restoptim-front
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_TELEMETRY_DISABLED=1
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./front:/app
+      - /app/node_modules
+      - /app/.next
+
+  restoptim:
+    build:
+      context: ./restoptim
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    container_name: restoptim-backend
+    image: restoptim-backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DEVTOOLS_RESTART_ENABLED=true
+      - SPRING_DEVTOOLS_LIVERELOAD_ENABLED=true
+      - SERVER_ADDRESS=0.0.0.0
+    volumes:
+      - ./restoptim/src:/app/src
+      - ./restoptim/pom.xml:/app/pom.xml
+      - ./restoptim/data:/app/data
+      - ./restoptim/target:/app/target

@@ -48,9 +48,9 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-        <p className="font-semibold text-zinc-900 dark:text-zinc-100">MVP</p>
-        <p className="mt-1 leading-relaxed">
-          Données fictives. Backend Spring Boot non connecté.
+        <p className="font-semibold text-zinc-900 dark:text-zinc-100">Backend connecté</p>
+        <p className="mt-1 font-mono leading-relaxed text-zinc-400">
+          :8080
         </p>
       </div>
     </aside>

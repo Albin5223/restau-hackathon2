@@ -23,7 +23,7 @@ jobs:
         run: npm run build
       - name: Check build output
         working-directory: ./front
-        run: ls -la
+        run: ls -la .next
 
   build-back:
     runs-on: ubuntu-latest

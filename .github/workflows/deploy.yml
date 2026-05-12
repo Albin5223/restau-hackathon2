@@ -1,10 +1,8 @@
 name: Deploy
 
 on:
-  workflow_run:
-    workflows: [Docker]
-    types: [completed]
-    branches: ["**"] # [main]
+  push:
+    branches: ['**']
 
 jobs:
   deploy:

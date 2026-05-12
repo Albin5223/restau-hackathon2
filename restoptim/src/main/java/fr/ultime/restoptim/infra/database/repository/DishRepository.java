@@ -12,11 +12,12 @@ import java.util.Optional;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import fr.ultime.restoptim.domain.model.dish.DishId;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
-import fr.ultime.restoptim.domain.model.Dish;
+import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.ResourceType;
 import fr.ultime.restoptim.domain.model.Task;
 import fr.ultime.restoptim.domain.model.TaskKind;
@@ -51,22 +52,22 @@ public class DishRepository implements Dishes {
             ps.setString(2, tasksJson);
             return ps;
         }, keyHolder);
-        int id = Objects.requireNonNull(keyHolder.getKey()).intValue();
-        return new Dish(id, name, parseTasks(tasksJson));
+        long id = Objects.requireNonNull(keyHolder.getKey()).longValue();
+        return new Dish(DishId.from(id), name, parseTasks(tasksJson));
     }
 
     @Override
-    public Optional<Dish> getDishById(int id) {
-        return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> mapRowToDish(rs), id)
+    public Optional<Dish> getDishById(DishId id) {
+        return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> mapRowToDish(rs), id.value())
                 .stream()
                 .findFirst();
     }
 
     private Dish mapRowToDish(ResultSet rs) throws SQLException {
-        int id = rs.getInt("id");
+        long id = rs.getLong("id");
         String name = rs.getString("name");
         String tasksJson = rs.getString("tasks");
-        return new Dish(id, name, parseTasks(tasksJson));
+        return new Dish(DishId.from(id), name, parseTasks(tasksJson));
     }
 
     private List<Task> parseTasks(String tasksJson) {

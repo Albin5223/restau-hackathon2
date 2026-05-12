@@ -3,6 +3,7 @@ package fr.ultime.restoptim.infra.database.repository;
 import java.util.List;
 import java.util.Optional;
 
+import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 import fr.ultime.restoptim.domain.model.table.TableId;
@@ -47,9 +48,9 @@ public class OrderRepository implements Orders {
     @Override
     public Optional<Order> getOrderById(OrderId orderId) {
         return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> {
-            List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, orderId.value());
+            List<Long> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Long.class, orderId.value());
             return new Order(OrderId.from(rs.getString("id")), TableId.from(rs.getLong("table_id")),
-                    rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
+                    rs.getLong("placed_at"), dishIds.stream().map(DishId::from).toList(), rs.getString("schedule"));
         }, orderId.value()).stream().findFirst();
     }
 
@@ -67,9 +68,9 @@ public class OrderRepository implements Orders {
     public List<Order> getActiveOrders() {
         return jdbcTemplate.query(SELECT_ACTIVE, (rs, rowNum) -> {
             OrderId orderId = OrderId.from( rs.getString("id"));
-            List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, orderId.value());
+            List<Long> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Long.class, orderId.value());
             return new Order(orderId, TableId.from(rs.getLong("table_id")),
-                    rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
+                    rs.getLong("placed_at"), dishIds.stream().map(DishId::from).toList(), rs.getString("schedule"));
         });
     }
 }

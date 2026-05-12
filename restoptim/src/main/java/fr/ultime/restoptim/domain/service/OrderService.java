@@ -3,6 +3,7 @@ package fr.ultime.restoptim.domain.service;
 import java.util.*;
 
 import fr.ultime.restoptim.domain.model.*;
+import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 import fr.ultime.restoptim.domain.model.table.TableId;
 import fr.ultime.restoptim.domain.spi.Orders;
@@ -16,7 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.model.OrderResult;
-import fr.ultime.restoptim.domain.model.Dish;
+import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.DishJob;
 import fr.ultime.restoptim.domain.model.GanttTask;
 import fr.ultime.restoptim.domain.model.OccupiedInterval;
@@ -54,7 +55,7 @@ public class OrderService {
      * 3. Les plannings des commandes existantes sont mis à jour en base.
      */
     @Transactional
-    public OrderResult placeOrder(TableId tableId, List<Integer> dishIds, double speedMultiplier) {
+    public OrderResult placeOrder(TableId tableId, List<DishId> dishIds, double speedMultiplier) {
         logger.info("[SERVICE] placeCommande: tableId={}, plats={}, multiplicateur={}", tableId, dishIds, speedMultiplier);
 
         Table table = tables.getTableById(tableId)
@@ -136,7 +137,7 @@ public class OrderService {
             long baseMs = order.placedAt();
 
             // Charger les définitions de plats pour la structure de dépendances
-            Map<Integer, Dish> dishById = loadDishes(order.dishIds());
+            Map<DishId, Dish> dishById = loadDishes(order.dishIds());
 
             // Grouper les tâches planifiées par jobId, dans l'ordre d'apparition
             Map<String, List<ScheduledTask>> tasksByJob = new LinkedHashMap<>();
@@ -184,7 +185,7 @@ public class OrderService {
                 String origJobId = entry.getKey();
                 List<ScheduledTask> jobTasks = entry.getValue();
 
-                int dishId = jobTasks.get(0).dishId();
+                DishId dishId = jobTasks.get(0).dishId();
                 Dish dish = dishById.get(dishId);
                 if (dish == null) continue;
 
@@ -293,10 +294,10 @@ public class OrderService {
 
     // ─── Méthodes utilitaires ─────────────────────────────────────────────────
 
-    private List<DishJob> buildJobs(List<Integer> dishIds, double speedMultiplier) {
+    private List<DishJob> buildJobs(List<DishId> dishIds, double speedMultiplier) {
         List<DishJob> jobs = new ArrayList<>();
         for (int i = 0; i < dishIds.size(); i++) {
-            int dishId = dishIds.get(i);
+            DishId dishId = dishIds.get(i);
             Dish dish = dishes.getDishById(dishId)
                     .orElseThrow(() -> new IllegalArgumentException("Plat introuvable : " + dishId));
             if (speedMultiplier != 1.0) dish = scaleDish(dish, speedMultiplier);
@@ -314,9 +315,9 @@ public class OrderService {
         return new Dish(dish.id(), dish.name(), scaledTasks);
     }
 
-    private Map<Integer, Dish> loadDishes(List<Integer> dishIds) {
-        Map<Integer, Dish> result = new HashMap<>();
-        for (int id : dishIds) {
+    private Map<DishId, Dish> loadDishes(List<DishId> dishIds) {
+        Map<DishId, Dish> result = new HashMap<>();
+        for (DishId id : dishIds) {
             if (!result.containsKey(id))
                 dishes.getDishById(id).ifPresent(d -> result.put(d.id(), d));
         }

@@ -3,6 +3,7 @@ package fr.ultime.restoptim.application.api;
 import java.util.ArrayList;
 import java.util.List;
 
+import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import fr.ultime.restoptim.domain.model.Dish;
+import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.DishJob;
 import fr.ultime.restoptim.domain.model.OrderRequest;
 import fr.ultime.restoptim.domain.model.OrderSchedule;
@@ -35,15 +36,15 @@ public class SchedulerController {
 
         List<DishJob> jobs = new ArrayList<>();
         for (int index = 0; index < body.dishIds().size(); index++) {
-            int dishId = body.dishIds().get(index);
-            Dish dish = dishes.getDishById(dishId)
+            long dishId = body.dishIds().get(index);
+            Dish dish = dishes.getDishById(DishId.from(dishId))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + dishId));
             jobs.add(new DishJob("job_" + index, dish));
         }
 
         OrderId orderId = (body.orderId() == null || body.orderId().isBlank())
                 ? OrderId.from("cmd_" + System.currentTimeMillis())
-                : body.orderId();
+                : OrderId.from(body.orderId());
 
         try {
             return scheduler.schedule(new OrderRequest(orderId, jobs));
@@ -54,6 +55,6 @@ public class SchedulerController {
         }
     }
 
-    public record ScheduleRequest(OrderId orderId, List<Integer> dishIds) {
+    public record ScheduleRequest(String orderId, List<Long> dishIds) {
     }
 }

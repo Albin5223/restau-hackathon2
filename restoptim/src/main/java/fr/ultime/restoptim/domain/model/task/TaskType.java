@@ -1,6 +1,6 @@
-package fr.ultime.restoptim.domain.model;
+package fr.ultime.restoptim.domain.model.task;
 
-public enum TaskKind {
+public enum TaskType {
     PREPARATION(1),
     COOKING(2),
     PLATING(3),
@@ -8,12 +8,12 @@ public enum TaskKind {
 
     private final int id;
 
-    TaskKind(int id) {
+    TaskType(int id) {
         this.id = id;
     }
 
-    public static TaskKind fromId(int id) {
-        for (TaskKind kind : values()) {
+    public static TaskType fromId(int id) {
+        for (TaskType kind : values()) {
             if (kind.id == id) {
                 return kind;
             }

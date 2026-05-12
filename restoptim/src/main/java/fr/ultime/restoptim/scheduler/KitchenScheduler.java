@@ -12,6 +12,9 @@ import java.util.Set;
 
 import fr.ultime.restoptim.domain.model.job.JobId;
 import fr.ultime.restoptim.domain.model.order.OrderId;
+import fr.ultime.restoptim.domain.model.task.Task;
+import fr.ultime.restoptim.domain.model.task.TaskId;
+import fr.ultime.restoptim.domain.model.task.TaskType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,17 +37,15 @@ import fr.ultime.restoptim.domain.model.ResourcePool;
 import fr.ultime.restoptim.domain.model.ResourceType;
 import fr.ultime.restoptim.domain.model.ScheduledTask;
 import fr.ultime.restoptim.domain.model.SchedulerConfig;
-import fr.ultime.restoptim.domain.model.Task;
-import fr.ultime.restoptim.domain.model.TaskKind;
 import fr.ultime.restoptim.domain.spi.Resources;
 
 /**
  * Ordonnanceur CP-SAT gérant plusieurs commandes simultanément.
- *
+ * <p>
  * Stratégie :
  * - Seules les tâches EN COURS (déjà démarrées) sont figées comme intervalles occupés.
  * - Les tâches EN ATTENTE de toutes les commandes actives sont re-planifiées
- *   ensemble avec la nouvelle commande dans un seul modèle CP-SAT.
+ * ensemble avec la nouvelle commande dans un seul modèle CP-SAT.
  * - Cela garantit toujours une solution tant que la capacité physique le permet.
  */
 @Service
@@ -60,7 +61,9 @@ public class KitchenScheduler {
         Loader.loadNativeLibraries();
     }
 
-    /** Wrapper de commodité pour une seule commande. */
+    /**
+     * Wrapper de commodité pour une seule commande.
+     */
     public OrderSchedule schedule(OrderRequest order, List<OccupiedInterval> runningIntervals) {
         return scheduleAll(List.of(order), runningIntervals, Map.of()).get(0);
     }
@@ -127,7 +130,7 @@ public class KitchenScheduler {
                     task.resources().forEach(type ->
                             intervalsByType.computeIfAbsent(type, t -> new ArrayList<>()).add(interval));
 
-                    if (task.kind() == TaskKind.PLATING) {
+                    if (task.kind() == TaskType.PLATING) {
                         pStarts.put(job.jobId(), start);
                         pEnds.put(job.jobId(), end);
                     }
@@ -168,7 +171,7 @@ public class KitchenScheduler {
                     TaskVars current = taskVars.get(key);
 
                     // Précédences (uniquement les dépendances encore en attente dans ce modèle)
-                    for (int depId : task.dependencies()) {
+                    for (TaskId depId : task.dependencies()) {
                         TaskVars dep = taskVars.get(key(order.orderId(), job.jobId(), depId));
                         if (dep == null)
                             throw new IllegalArgumentException(
@@ -177,11 +180,11 @@ public class KitchenScheduler {
                     }
 
                     // Toutes les tâches non-dressage finissent avant le dressage
-                    if (task.kind() != TaskKind.PLATING) {
+                    if (task.kind() !=TaskType.PLATING) {
                         model.addGreaterOrEqual(platingStart, current.end());
                     }
 
-                    if (task.kind() == TaskKind.COOKING) {
+                    if (task.kind() ==TaskType.COOKING) {
                         // Contrainte dure : la cuisson doit finir AVANT le dressage
                         model.addLessOrEqual(current.end(), platingStart);
 
@@ -215,7 +218,7 @@ public class KitchenScheduler {
                 model.addLessOrEqual(pe, svcTime);
                 model.addGreaterOrEqual(pe, LinearExpr.affine(svcTime, 1, -tol));
 
-                IntVar gap = model.newIntVar(0, tol, "sg_" + order.orderId().value() + "_" + e.getKey().value());
+                IntVar gap = model.newIntVar(0, tol, "sg_" + order.orderId() + "_" + e.getKey());
                 model.addEquality(gap, LinearExpr.weightedSum(
                         new LinearArgument[]{svcTime, pe}, new long[]{1L, -1L}));
                 serviceGapVars.add(gap);
@@ -225,9 +228,18 @@ public class KitchenScheduler {
         // --- Objectif : minimiser la somme des temps de service + écarts ---
         List<LinearArgument> objVars = new ArrayList<>();
         List<Long> objCoeffs = new ArrayList<>();
-        serviceTimeByOrder.values().forEach(v -> { objVars.add(v); objCoeffs.add(config.objectiveWeightServiceTime()); });
-        serviceGapVars.forEach(v -> { objVars.add(v); objCoeffs.add(config.objectiveWeightServiceGap()); });
-        cookingGapVars.forEach(v -> { objVars.add(v); objCoeffs.add(config.objectiveWeightCookingGap()); });
+        serviceTimeByOrder.values().forEach(v -> {
+            objVars.add(v);
+            objCoeffs.add(config.objectiveWeightServiceTime());
+        });
+        serviceGapVars.forEach(v -> {
+            objVars.add(v);
+            objCoeffs.add(config.objectiveWeightServiceGap());
+        });
+        cookingGapVars.forEach(v -> {
+            objVars.add(v);
+            objCoeffs.add(config.objectiveWeightCookingGap());
+        });
         model.minimize(LinearExpr.weightedSum(
                 objVars.toArray(new LinearArgument[0]),
                 objCoeffs.stream().mapToLong(Long::longValue).toArray()));
@@ -273,7 +285,10 @@ public class KitchenScheduler {
                 }
                 int best = 0;
                 for (int i = 0; i < times.length; i++) {
-                    if (times[i] <= ts) { best = i; break; }
+                    if (times[i] <= ts) {
+                        best = i;
+                        break;
+                    }
                     if (times[i] < times[best]) best = i;
                 }
                 names.add(insts.get(best));
@@ -311,8 +326,8 @@ public class KitchenScheduler {
 
     // ─── Méthodes utilitaires ─────────────────────────────────────────────────
 
-    private static String key(OrderId orderId, JobId jobId, int taskId) {
-        return orderId.value() + "§" + jobId.value() + "§" + taskId;
+    private static String key(OrderId orderId, JobId jobId, TaskId taskId) {
+        return orderId.value() + "§" + jobId.value() + "§" + taskId.value();
     }
 
     private Map<ResourceType, Integer> capacityByType() {
@@ -336,14 +351,14 @@ public class KitchenScheduler {
     }
 
     private int criticalPath(DishJob job) {
-        Map<Integer, Task> byId = new HashMap<>();
+        Map<TaskId, Task> byId = new HashMap<>();
         job.dish().tasks().forEach(t -> byId.put(t.id(), t));
-        Map<Integer, Integer> memo = new HashMap<>();
+        Map<TaskId, Integer> memo = new HashMap<>();
         return job.dish().tasks().stream()
                 .mapToInt(t -> longestPath(t, byId, memo)).max().orElse(0);
     }
 
-    private int longestPath(Task task, Map<Integer, Task> byId, Map<Integer, Integer> memo) {
+    private int longestPath(Task task, Map<TaskId, Task> byId, Map<TaskId, Integer> memo) {
         return memo.computeIfAbsent(task.id(), id -> {
             int maxDep = task.dependencies().stream()
                     .mapToInt(depId -> longestPath(byId.get(depId), byId, memo)).max().orElse(0);
@@ -354,7 +369,7 @@ public class KitchenScheduler {
     private int computeEffectivePlatingTolerance(OrderRequest order, Map<ResourceType, Integer> capacityByType) {
         List<Task> platingTasks = order.jobs().stream()
                 .flatMap(job -> job.dish().tasks().stream())
-                .filter(t -> t.kind() == TaskKind.PLATING).toList();
+                .filter(t -> t.kind() == TaskType.PLATING).toList();
         if (platingTasks.isEmpty()) return config.tolerancePlatingBeforeServiceSeconds();
 
         int platingCapacity = platingTasks.stream()
@@ -380,13 +395,13 @@ public class KitchenScheduler {
                 throw new IllegalArgumentException("Le plat " + job.jobId() + " doit avoir au moins une tâche.");
 
             int platingCount = 0;
-            Set<Integer> taskIds = new HashSet<>();
+            Set<TaskId> taskIds = new HashSet<>();
             for (Task task : job.dish().tasks()) {
                 if (!taskIds.add(task.id()))
                     throw new IllegalArgumentException("taskId dupliqué : " + task.id() + " dans " + job.jobId());
                 if (task.duration() <= 0)
                     throw new IllegalArgumentException("Durée invalide pour task=" + task.id());
-                if (task.kind() == TaskKind.PLATING) platingCount++;
+                if (task.kind() == TaskType.PLATING) platingCount++;
             }
             if (platingCount != 1)
                 throw new IllegalArgumentException("Exactement 1 tâche PLATING requise : " + job.jobId());
@@ -395,18 +410,18 @@ public class KitchenScheduler {
     }
 
     private void ensureAcyclic(DishJob job) {
-        Map<Integer, Task> byId = new HashMap<>();
+        Map<TaskId, Task> byId = new HashMap<>();
         job.dish().tasks().forEach(t -> byId.put(t.id(), t));
-        Map<Integer, Integer> state = new HashMap<>();
+        Map<TaskId, Integer> state = new HashMap<>();
         for (Task task : job.dish().tasks()) {
             if (!state.containsKey(task.id()) && hasCycle(task, byId, state, job.jobId()))
                 throw new IllegalArgumentException("Cycle de dépendances dans le job " + job.jobId());
         }
     }
 
-    private boolean hasCycle(Task task, Map<Integer, Task> byId, Map<Integer, Integer> state, JobId jobId) {
+    private boolean hasCycle(Task task, Map<TaskId, Task> byId, Map<TaskId, Integer> state, JobId jobId) {
         state.put(task.id(), 1);
-        for (int depId : task.dependencies()) {
+        for (TaskId depId : task.dependencies()) {
             Task dep = byId.get(depId);
             if (dep == null)
                 throw new IllegalArgumentException("Dépendance inconnue : " + depId + " dans " + jobId);
@@ -430,7 +445,7 @@ public class KitchenScheduler {
     }
 
     private Map<ResourceType, long[]> initFreeAt(Map<ResourceType, List<String>> instanceNames,
-                                                   List<OccupiedInterval> runningIntervals) {
+                                                 List<OccupiedInterval> runningIntervals) {
         Map<ResourceType, long[]> freeAt = new HashMap<>();
         instanceNames.forEach((type, names) -> freeAt.put(type, new long[names.size()]));
 
@@ -453,5 +468,6 @@ public class KitchenScheduler {
         return Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase(Locale.ROOT);
     }
 
-    private record TaskVars(IntVar start, IntVar end, IntervalVar interval) {}
+    private record TaskVars(IntVar start, IntVar end, IntervalVar interval) {
+    }
 }

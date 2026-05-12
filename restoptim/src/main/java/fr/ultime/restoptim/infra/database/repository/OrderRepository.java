@@ -3,7 +3,8 @@ package fr.ultime.restoptim.infra.database.repository;
 import java.util.List;
 import java.util.Optional;
 
-import fr.ultime.restoptim.domain.model.Order;
+import fr.ultime.restoptim.domain.model.order.Order;
+import fr.ultime.restoptim.domain.model.order.OrderId;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,30 +44,30 @@ public class OrderRepository implements Orders {
     }
 
     @Override
-    public Optional<Order> getOrderById(String id) {
+    public Optional<Order> getOrderById(OrderId orderId) {
         return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> {
-            List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, id);
-            return new Order(rs.getString("id"), rs.getInt("table_id"),
+            List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, orderId.value());
+            return new Order(OrderId.from(rs.getString("id")), rs.getInt("table_id"),
                     rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
-        }, id).stream().findFirst();
+        }, orderId.value()).stream().findFirst();
     }
 
     @Override
-    public void closeOrder(String  orderId) {
-        jdbcTemplate.update(CLOSE_COMMANDE, orderId);
+    public void closeOrder(OrderId  orderId) {
+        jdbcTemplate.update(CLOSE_COMMANDE, orderId.value());
     }
 
     @Override
-    public void updateSchedule(String orderId, String scheduleJson) {
-        jdbcTemplate.update(UPDATE_SCHEDULE, scheduleJson, orderId);
+    public void updateSchedule(OrderId orderId, String scheduleJson) {
+        jdbcTemplate.update(UPDATE_SCHEDULE, scheduleJson, orderId.value());
     }
 
     @Override
     public List<Order> getActiveOrders() {
         return jdbcTemplate.query(SELECT_ACTIVE, (rs, rowNum) -> {
-            String cid = rs.getString("id");
-            List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, cid);
-            return new Order(cid, rs.getInt("table_id"),
+            OrderId orderId = OrderId.from( rs.getString("id"));
+            List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, orderId.value());
+            return new Order(orderId, rs.getInt("table_id"),
                     rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
         });
     }

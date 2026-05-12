@@ -1,12 +1,9 @@
 package fr.ultime.restoptim.domain.service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import fr.ultime.restoptim.domain.model.*;
+import fr.ultime.restoptim.domain.model.order.OrderId;
 import fr.ultime.restoptim.domain.spi.Orders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import fr.ultime.restoptim.domain.spi.Tables;
 import fr.ultime.restoptim.scheduler.KitchenScheduler;
@@ -53,11 +51,11 @@ public class OrderService {
         }
 
         long now = System.currentTimeMillis();
-        String commandeId = "cmd_" + now;
+        OrderId orderId = OrderId.from("cmd_" + now);
 
         // Construire les jobs de la nouvelle commande
         List<DishJob> newJobs = buildJobs(dishIds, speedMultiplier);
-        OrderRequest newOrder = new OrderRequest(commandeId, newJobs);
+        OrderRequest newOrder = new OrderRequest(orderId, newJobs);
 
         // Analyser les commandes actives : séparer tâches en cours (verrouillées) et en attente (re-planifiables)
         List<Order> activeOrders = orders.getActiveOrders();
@@ -76,31 +74,31 @@ public class OrderService {
 
         // Mettre à jour les plannings des commandes existantes re-planifiées
         for (int i = 0; i < pendingOrders.size(); i++) {
-            Order order = findOrder(activeOrders, pendingOrders.get(i).orderId());
-            if (order != null) {
-                mergeAndUpdateSchedule(order, schedules.get(i), now);
+            Order commande = findOrder(activeOrders, pendingOrders.get(i).orderId());
+            if (commande != null) {
+                mergeAndUpdateSchedule(commande, schedules.get(i), now);
             }
         }
 
         // Sauvegarder la nouvelle commande
         OrderSchedule newSchedule = schedules.get(schedules.size() - 1);
-        orders.save(new Order(commandeId, tableId, now, dishIds, serialize(newSchedule)));
+        orders.save(new Order(orderId, tableId, now, dishIds, serialize(newSchedule)));
         tables.save(new Table(table.id(), table.number(), table.seats(),
-                TableStatus.EN_PREPARATION, table.partySize(), commandeId));
+                TableStatus.EN_PREPARATION, table.partySize(), orderId));
 
         long serviceTimeAt = now + newSchedule.serviceTimeSecond() * 1_000L;
-        List<GanttTask> ganttTasks = toGanttTasks(commandeId, table.number(), newSchedule, now);
-        logger.info("[SERVICE] Commande planifiée : id={}, serviceTimeAt={}ms", commandeId, serviceTimeAt);
-        return new OrderResult(commandeId, table.number(), serviceTimeAt, ganttTasks);
+        List<GanttTask> ganttTasks = toGanttTasks(orderId, table.number(), newSchedule, now);
+        logger.info("[SERVICE] Commande planifiée : id={}, serviceTimeAt={}ms", orderId, serviceTimeAt);
+        return new OrderResult(orderId, table.number(), serviceTimeAt, ganttTasks);
     }
 
     public List<GanttTask> getAllActiveGanttTasks() {
         List<GanttTask> result = new ArrayList<>();
-        for (Order order : orders.getActiveOrders()) {
-            OrderSchedule schedule = deserialize(order.scheduleJson());
-            Table table = tables.getTableById(order.tableId()).orElse(null);
+        for (Order commande : orders.getActiveOrders()) {
+            OrderSchedule schedule = deserialize(commande.scheduleJson());
+            Table table = tables.getTableById(commande.tableId()).orElse(null);
             int tableNumber = table != null ? table.number() : 0;
-            result.addAll(toGanttTasks(order.id(), tableNumber, schedule, order.placedAt()));
+            result.addAll(toGanttTasks(commande.id(), tableNumber, schedule, commande.placedAt()));
         }
         return result;
     }
@@ -235,7 +233,7 @@ public class OrderService {
         OrderSchedule existing = deserialize(order.scheduleJson());
         long baseMs = order.placedAt();
         long deltaSec = (nowMs - baseMs) / 1000L; // offset à ajouter aux temps du solveur
-        String prefix = order.id() + "_";
+        String prefix = order.id().value() + "_";
 
         // Indexer les tâches mises à jour par (jobId_original, taskId)
         Map<String, ScheduledTask> updatedByKey = new HashMap<>();
@@ -311,20 +309,20 @@ public class OrderService {
         return result;
     }
 
-    private Order findOrder(List<Order> list, String id) {
-        return list.stream().filter(c -> c.id().equals(id)).findFirst().orElse(null);
+    private Order findOrder(List<Order> list, OrderId orderId) {
+        return list.stream().filter(order -> order.id().equals(orderId)).findFirst().orElse(null);
     }
 
-    private List<GanttTask> toGanttTasks(String commandeId, int tableNumber,
-            OrderSchedule schedule, long baseTime) {
+    private List<GanttTask> toGanttTasks(OrderId orderId, int tableNumber,
+                                         OrderSchedule schedule, long baseTime) {
         List<GanttTask> result = new ArrayList<>();
         for (ScheduledTask task : schedule.scheduledTasks()) {
             List<String> resourceNames = (task.assignedResourceNames() != null && !task.assignedResourceNames().isEmpty())
                     ? task.assignedResourceNames()
                     : task.resources().stream().map(ResourceType::name).toList();
             result.add(new GanttTask(
-                    commandeId + "_" + task.jobId() + "_" + task.taskId(),
-                    commandeId,
+                    orderId.value() + "_" + task.jobId() + "_" + task.taskId(),
+                    orderId,
                     tableNumber,
                     task.dishName(),
                     task.taskName(),

@@ -3,6 +3,17 @@ package fr.ultime.restoptim.application.api;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import fr.ultime.restoptim.application.dto.CreateDishRequestDto;
+import fr.ultime.restoptim.application.dto.DishDto;
+import fr.ultime.restoptim.application.dto.LongIdResponse;
+import fr.ultime.restoptim.application.mapper.CreateDishRequestMapper;
+import fr.ultime.restoptim.application.mapper.DishMapper;
+import fr.ultime.restoptim.domain.api.CreateDishUseCase;
+import fr.ultime.restoptim.domain.api.GetDishByIdUseCase;
+import fr.ultime.restoptim.domain.api.GetDishesUseCase;
+import fr.ultime.restoptim.domain.model.ResourceType;
+import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.dish.DishId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,111 +30,80 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import fr.ultime.restoptim.domain.model.dish.Dish;
-import fr.ultime.restoptim.domain.model.ResourceType;
-import fr.ultime.restoptim.domain.spi.Dishes;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/dishes")
 @RequiredArgsConstructor
 public class DishController {
+    private final GetDishByIdUseCase getDishByIdUseCase;
+    private final GetDishesUseCase getDishesUseCase;
+    private final CreateDishUseCase createDishUseCase;
 
-    private final Dishes dishes;
-    private final ObjectMapper objectMapper;
+    private final DishMapper dishMapper;
+    private final CreateDishRequestMapper createDishRequestMapper;
 
     private final Logger logger = LoggerFactory.getLogger(DishController.class);
 
     @GetMapping
-    public List<DishResponse> list() {
-        return dishes.getDishes().stream().map(this::toResponse).toList();
+    public List<DishDto> list() {
+        return getDishesUseCase.getAllDishes().stream().map(dishMapper::toDto).toList();
     }
 
     @GetMapping("/{id}")
-    public DishResponse get(@PathVariable long id) {
-        return dishes.getDishById(DishId.from(id)).map(this::toResponse)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + id));
+    public DishDto get(@PathVariable long id) {
+        return dishMapper.toDto(getDishByIdUseCase.getDishesById(DishId.from(id)));
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public DishResponse create(@RequestBody CreateDishRequest body) {
+    public LongIdResponse create(@RequestBody CreateDishRequestDto body) {
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le nom du plat est requis.");
         }
         if (body.tasks() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Les tâches du plat sont requises.");
         }
-        try {
-            String tasksJson = objectMapper.writeValueAsString(body.tasks());
-            return toResponse(dishes.save(body.name().trim(), tasksJson));
-        } catch (JsonProcessingException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Format de tâches invalide.");
-        }
+        return new LongIdResponse(createDishUseCase.createDish(createDishRequestMapper.toDomain(body)).value());
     }
+
+
 
     @PostMapping("/import")
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
-    public List<DishResponse> importDishes(@RequestBody List<CreateDishRequest> body) {
+    public List<Long> importDishes(@RequestBody List<CreateDishRequestDto> body) {
         if (body == null || body.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La liste de plats est vide.");
         }
-        List<DishResponse> results = new ArrayList<>();
+        List<Long> results = new ArrayList<>();
         for (int i = 0; i < body.size(); i++) {
-            CreateDishRequest req = body.get(i);
-            if (req.name() == null || req.name().isBlank()) {
+            CreateDishRequestDto createDishRequest = body.get(i);
+            if (!createDishRequest.hasName()) {
                 logger.warn("Plat #{} : nom manquant", i + 1);
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Le nom du plat #" + (i + 1) + " est requis.");
             }
-            if (req.tasks() == null) {
+            if (!createDishRequest.hasTasks()) {
                 logger.warn("Plat #{} : tâches manquantes", i + 1);
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Les tâches du plat \"" + req.name() + "\" sont requises.");
+                        "Les tâches du plat \"" + createDishRequest.name() + "\" sont requises.");
             }
             try {
-                String tasksJson = objectMapper.writeValueAsString(req.tasks());
-                results.add(toResponse(dishes.save(req.name().trim(), tasksJson)));
+                results.add(createDishUseCase.createDish(createDishRequestMapper.toDomain(createDishRequest)).value());
             } catch (DataIntegrityViolationException e) {
-                logger.warn("Plat #{} : nom en doublon - {}", i + 1, req.name());
+                logger.warn("Plat #{} : nom en doublon - {}", i + 1, createDishRequest.name());
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Un plat avec le nom \"" + req.name().trim() + "\" existe déjà.");
-            } catch (JsonProcessingException e) {
-                logger.warn("Plat #{} : format de tâches invalide - {}", i + 1, req.name());
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Format de tâches invalide pour \"" + req.name() + "\".");
+                        "Un plat avec le nom \"" + createDishRequest.name().trim() + "\" existe déjà.");
             } catch (ResponseStatusException e) {
                 throw e;
             } catch (Exception e) {
-                logger.warn("Plat #{} : erreur inattendue - {} : {}", i + 1, req.name(), e.getMessage());
+                logger.warn("Plat #{} : erreur inattendue - {} : {}", i + 1, createDishRequest.name(), e.getMessage());
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Erreur pour \"" + req.name() + "\" : " + e.getMessage());
+                        "Erreur pour \"" + createDishRequest.name() + "\" : " + e.getMessage());
             }
         }
         return results;
     }
 
-    private DishResponse toResponse(Dish dish) {
-        List<StepDto> etapes = dish.tasks().stream()
-                .map(t -> new StepDto(
-                        t.name(),
-                        t.resources().stream().map(ResourceType::name).toList(),
-                        t.duration(),
-                        t.dependencies().stream().map(TaskId::value).toList(),
-                        t.kind().name().toLowerCase()))
-                .toList();
-        return new DishResponse(dish.id().value(), dish.name(), new TasksDto(etapes));
-    }
-
-    public record CreateDishRequest(String name, TasksDto tasks) {}
-
-    public record DishResponse(long id, String name, TasksDto tasks) {}
-
-    public record TasksDto(List<StepDto> etapes) {}
-
-    public record StepDto(String nom, List<String> ressource, int duree, List<Long> deps, String kind) {}
 }

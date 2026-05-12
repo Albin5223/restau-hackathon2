@@ -25,14 +25,17 @@ public class CommandeController {
 
     @PostMapping
     public CommandeResult place(@RequestBody PlaceCommandeRequest body) {
-        logger.info("[COMMANDE] Reçu request: tableId={}, dishIds={}", body.tableId(), body.dishIds());
+        logger.info("[COMMANDE] Reçu request: tableId={}, dishIds={}, speedMultiplier={}", body.tableId(), body.dishIds(), body.speedMultiplier());
         if (body.dishIds() == null || body.dishIds().isEmpty()) {
             logger.warn("[COMMANDE] Validation échouée: dishIds null ou vide");
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dishIds est requis et non vide.");
         }
+        double multiplier = (body.speedMultiplier() != null && body.speedMultiplier() > 0)
+                ? body.speedMultiplier()
+                : 1.0;
         try {
             logger.debug("[COMMANDE] Appel CommandeService.placeCommande pour tableId={}", body.tableId());
-            CommandeResult result = commandeService.placeCommande(body.tableId(), body.dishIds());
+            CommandeResult result = commandeService.placeCommande(body.tableId(), body.dishIds(), multiplier);
             logger.info("[COMMANDE] Succès: commandeId={}, serviceTime={}", result.commandeId(), result.serviceTimeAt());
             return result;
         } catch (IllegalArgumentException e) {
@@ -44,6 +47,6 @@ public class CommandeController {
         }
     }
 
-    public record PlaceCommandeRequest(int tableId, List<Integer> dishIds) {
+    public record PlaceCommandeRequest(int tableId, List<Integer> dishIds, Double speedMultiplier) {
     }
 }

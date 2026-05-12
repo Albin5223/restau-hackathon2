@@ -73,11 +73,11 @@ public class KitchenScheduler {
         Map<ResourceType, Integer> capacityByType = capacityByType();
         logger.debug("[SCHEDULER] Capacités par type: {}", capacityByType);
         int effectivePlatingTolerance = computeEffectivePlatingTolerance(order, capacityByType);
-        logger.debug("[SCHEDULER] Tolérance dressage effective: {}min", effectivePlatingTolerance);
+        logger.debug("[SCHEDULER] Tolérance dressage effective: {}s", effectivePlatingTolerance);
 
         CpModel model = new CpModel();
         int horizon = computeHorizon(order, activeOccupied, effectivePlatingTolerance);
-        logger.debug("[SCHEDULER] Horizon calculé: {}min", horizon);
+        logger.debug("[SCHEDULER] Horizon calculé: {}s", horizon);
 
         Map<TaskKey, TaskVars> taskVarsByKey = new LinkedHashMap<>();
         Map<ResourceType, List<IntervalVar>> intervalsByType = new HashMap<>();
@@ -111,8 +111,8 @@ public class KitchenScheduler {
         // Ajouter les intervalles déjà occupés par d'autres commandes actives
         for (int i = 0; i < activeOccupied.size(); i++) {
             OccupiedInterval occ = activeOccupied.get(i);
-            long s = Math.max(0L, occ.startMinute());
-            long e = Math.min(horizon, occ.endMinute());
+            long s = Math.max(0L, occ.startSecond());
+            long e = Math.min(horizon, occ.endSecond());
             if (e <= s) continue;
             IntVar sv = model.newConstant(s);
             IntVar ev = model.newConstant(e);
@@ -157,11 +157,11 @@ public class KitchenScheduler {
                     model.addLessOrEqual(current.end(), platingStart);
                     model.addGreaterOrEqual(
                             current.end(),
-                            LinearExpr.affine(platingStart, 1, -config.toleranceCookingBeforePlatingMinutes()));
+                            LinearExpr.affine(platingStart, 1, -config.toleranceCookingBeforePlatingSeconds()));
 
                     IntVar gap = model.newIntVar(
                             0,
-                            config.toleranceCookingBeforePlatingMinutes(),
+                            config.toleranceCookingBeforePlatingSeconds(),
                             "cooking_gap_" + job.jobId() + "_" + task.id());
                     model.addEquality(
                             gap,
@@ -223,7 +223,7 @@ public class KitchenScheduler {
             throw new IllegalStateException(
                     "Aucune solution trouvee. Verifier les tolerances, l'horizon ou la capacite des ressources.");
         }
-        logger.info("[SCHEDULER] Service time: {}min", solver.value(serviceTime));
+        logger.info("[SCHEDULER] Service time: {}s", solver.value(serviceTime));
 
         // Build preliminary list (without instance assignment yet)
         List<ScheduledTask> scheduled = new ArrayList<>();
@@ -237,13 +237,13 @@ public class KitchenScheduler {
                         task.id(),
                         task.name(),
                         task.kind(),
-                        solver.value(vars.start()),
-                        solver.value(vars.end()),
+                        solver.value(vars.start()),  // startSecond
+                        solver.value(vars.end()),    // endSecond
                         task.resources(),
                         null));
             }
         }
-        scheduled.sort(Comparator.comparingLong(ScheduledTask::startMinute));
+        scheduled.sort(Comparator.comparingLong(ScheduledTask::startSecond));
 
         // Greedy post-solve: assign a specific resource instance to each task.
         // The CP-SAT cumulative constraint guarantees that at most N tasks of a
@@ -261,7 +261,7 @@ public class KitchenScheduler {
                 if (!occ.type().equals(e.getKey()) || occ.instanceName() == null) continue;
                 for (int i = 0; i < names.size(); i++) {
                     if (names.get(i).equals(occ.instanceName())) {
-                        times[i] = Math.max(times[i], occ.endMinute());
+                        times[i] = Math.max(times[i], occ.endSecond());
                         break;
                     }
                 }
@@ -278,7 +278,7 @@ public class KitchenScheduler {
 
             int bestIdx = -1;
             for (int i = 0; i < times.length; i++) {
-                if (times[i] <= task.startMinute()) { bestIdx = i; break; }
+                if (times[i] <= task.startSecond()) { bestIdx = i; break; }
             }
             if (bestIdx == -1) { // fallback — pick instance finishing soonest
                 bestIdx = 0;
@@ -287,7 +287,7 @@ public class KitchenScheduler {
                 }
             }
             assignment.put(new TaskKey(task.jobId(), task.taskId()), names.get(bestIdx));
-            times[bestIdx] = task.endMinute();
+            times[bestIdx] = task.endSecond();
         }
 
         // Rebuild list with assigned instance names
@@ -300,12 +300,12 @@ public class KitchenScheduler {
                     }
                     return new ScheduledTask(t.jobId(), t.dishId(), t.dishName(),
                             t.taskId(), t.taskName(), t.kind(),
-                            t.startMinute(), t.endMinute(), t.resources(),
+                            t.startSecond(), t.endSecond(), t.resources(),
                             name != null ? name : "Inconnu");
                 })
                 .toList();
 
-        logger.info("[SCHEDULER] Fin schedule: orderId={}, status={}, serviceTime={}min, scheduledTaskCount={}", 
+        logger.info("[SCHEDULER] Fin schedule: orderId={}, status={}, serviceTime={}s, scheduledTaskCount={}",
                 order.orderId(), status, solver.value(serviceTime), result.size());
         return new OrderSchedule(order.orderId(), solver.value(serviceTime), result);
     }
@@ -324,13 +324,13 @@ public class KitchenScheduler {
                 .mapToInt(this::criticalPath)
                 .sum();
         long maxActiveEnd = activeOccupied.stream()
-                .mapToLong(OccupiedInterval::endMinute)
+                .mapToLong(OccupiedInterval::endSecond)
                 .max()
                 .orElse(0L);
         return (int) maxActiveEnd + newTasksDuration
-                + config.toleranceCookingBeforePlatingMinutes()
+                + config.toleranceCookingBeforePlatingSeconds()
                 + effectivePlatingTolerance
-                + config.horizonPaddingMinutes();
+                + config.horizonPaddingSeconds();
     }
 
     private int criticalPath(DishJob job) {
@@ -358,7 +358,7 @@ public class KitchenScheduler {
                 .flatMap(job -> job.dish().tasks().stream())
                 .filter(t -> t.kind() == TaskKind.PLATING)
                 .toList();
-        if (platingTasks.isEmpty()) return config.tolerancePlatingBeforeServiceMinutes();
+        if (platingTasks.isEmpty()) return config.tolerancePlatingBeforeServiceSeconds();
 
         // Capacité du goulot : minimum des capacités des types de ressources de dressage
         int platingCapacity = platingTasks.stream()
@@ -374,7 +374,7 @@ public class KitchenScheduler {
 
         // Fenêtre minimale = temps pour dresser tous les plats en séquence sur le goulot
         int minWindow = (totalPlatingDuration + platingCapacity - 1) / platingCapacity;
-        return Math.max(config.tolerancePlatingBeforeServiceMinutes(), minWindow);
+        return Math.max(config.tolerancePlatingBeforeServiceSeconds(), minWindow);
     }
 
     private void validate(OrderRequest order) {

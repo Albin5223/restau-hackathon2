@@ -4,6 +4,6 @@ import java.util.List;
 
 public record OrderSchedule(
         String orderId,
-        long serviceTimeMinute,
+        long serviceTimeSecond,
         List<ScheduledTask> scheduledTasks) {
 }

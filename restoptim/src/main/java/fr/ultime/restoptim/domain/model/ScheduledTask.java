@@ -9,8 +9,8 @@ public record ScheduledTask(
         int taskId,
         String taskName,
         TaskKind kind,
-        long startMinute,
-        long endMinute,
+        long startSecond,
+        long endSecond,
         List<ResourceType> resources,
         String assignedResourceName) {
 }

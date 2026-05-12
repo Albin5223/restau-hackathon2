@@ -147,6 +147,7 @@ function ManualSimulation() {
   const [dishes, setDishes] = useState<Recipe[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [dishSelections, setDishSelections] = useState<(number | null)[]>([null]);
+  const [speedMultiplier, setSpeedMultiplier] = useState(1.0);
   const [result, setResult] = useState<BackendCommandeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -193,7 +194,7 @@ function ManualSimulation() {
     setError(null);
     setResult(null);
     try {
-      const res = await api.commandes.place(selectedTableId, dishIds);
+      const res = await api.commandes.place(selectedTableId, dishIds, speedMultiplier);
       setResult(res);
       // refresh tables to reflect new status
       setTables(await api.tables.list());
@@ -210,6 +211,29 @@ function ManualSimulation() {
 
   return (
     <div className="space-y-6">
+      {/* Multiplicateur de vitesse */}
+      <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-4 text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          Multiplicateur de durée des étapes
+        </h2>
+        <Field
+          label="Facteur de temps"
+          suffix="×"
+          value={speedMultiplier}
+          onChange={(v) => setSpeedMultiplier(v)}
+          min={0.01}
+          max={3.0}
+          step={0.01}
+        />
+        <p className="mt-2 text-xs text-zinc-500">
+          {speedMultiplier < 1
+            ? `Durées réduites à ${(speedMultiplier * 100).toFixed(speedMultiplier < 0.1 ? 1 : 0)}% — simulation accélérée`
+            : speedMultiplier > 1
+            ? `Durées multipliées par ${speedMultiplier.toFixed(2)} — simulation ralentie`
+            : "Durées réelles"}
+        </p>
+      </section>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Sélection de table */}
         <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">

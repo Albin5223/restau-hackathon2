@@ -23,6 +23,7 @@ import fr.ultime.restoptim.domain.model.ResourceType;
 import fr.ultime.restoptim.domain.model.ScheduledTask;
 import fr.ultime.restoptim.domain.model.Table;
 import fr.ultime.restoptim.domain.model.TableStatus;
+import fr.ultime.restoptim.domain.model.Task;
 import fr.ultime.restoptim.domain.model.TaskKind;
 import fr.ultime.restoptim.domain.spi.Commandes;
 import fr.ultime.restoptim.domain.spi.Dishes;
@@ -42,13 +43,13 @@ public class CommandeService {
     private final ObjectMapper objectMapper;
 
     @Transactional
-    public CommandeResult placeCommande(int tableId, List<Integer> dishIds) {
-        logger.info("[COMMANDE-SERVICE] Début placeCommande: tableId={}, dishCount={}", tableId, dishIds.size());
+    public CommandeResult placeCommande(int tableId, List<Integer> dishIds, double speedMultiplier) {
+        logger.info("[COMMANDE-SERVICE] Début placeCommande: tableId={}, dishCount={}, speedMultiplier={}", tableId, dishIds.size(), speedMultiplier);
         try {
             Table table = tables.getTableById(tableId)
                     .orElseThrow(() -> new IllegalArgumentException("Table introuvable : " + tableId));
             logger.debug("[COMMANDE-SERVICE] Table trouvée: number={}, status={}", table.number(), table.status());
-            
+
             if (table.status() != TableStatus.LIBRE && table.status() != TableStatus.COMMANDE_PASSEE) {
                 logger.warn("[COMMANDE-SERVICE] Table indisponible: tableId={}, status={}", tableId, table.status());
                 throw new IllegalStateException("La table " + table.number() + " n'est pas disponible.");
@@ -56,16 +57,16 @@ public class CommandeService {
 
             long now = System.currentTimeMillis();
             String commandeId = "cmd_" + now;
-            
-            List<DishJob> jobs = buildJobs(dishIds);
+
+            List<DishJob> jobs = buildJobs(dishIds, speedMultiplier);
             logger.debug("[COMMANDE-SERVICE] Jobs construits: count={}", jobs.size());
-            
+
             List<OccupiedInterval> occupied = buildOccupied(now);
             logger.debug("[COMMANDE-SERVICE] Intervalles occupés trouvés: count={}", occupied.size());
 
             logger.debug("[COMMANDE-SERVICE] Appel scheduler.schedule avec orderId={}, jobCount={}", commandeId, jobs.size());
             OrderSchedule schedule = scheduler.schedule(new OrderRequest(commandeId, jobs), occupied);
-            logger.info("[COMMANDE-SERVICE] Ordonnancement réussi: serviceTime={}min", schedule.serviceTimeMinute());
+            logger.info("[COMMANDE-SERVICE] Ordonnancement réussi: serviceTime={}s", schedule.serviceTimeSecond());
 
             String scheduleJson = serialize(schedule);
             commandes.save(new Commande(commandeId, tableId, now, dishIds, scheduleJson));
@@ -75,7 +76,7 @@ public class CommandeService {
                     TableStatus.EN_PREPARATION, table.partySize(), commandeId));
             logger.debug("[COMMANDE-SERVICE] Table mise à jour: tableId={}, status=EN_PREPARATION", tableId);
 
-            long serviceTimeAt = now + schedule.serviceTimeMinute() * 60_000L;
+            long serviceTimeAt = now + schedule.serviceTimeSecond() * 1_000L;
             List<GanttTask> ganttTasks = toGanttTasks(commandeId, table.number(), schedule, now);
             logger.info("[COMMANDE-SERVICE] Fin placeCommande: commandeId={}, serviceTimeAtMs={}, ganttTaskCount={}", commandeId, serviceTimeAt, ganttTasks.size());
             return new CommandeResult(commandeId, table.number(), serviceTimeAt, ganttTasks);
@@ -104,7 +105,7 @@ public class CommandeService {
 
     /**
      * Construit la liste des intervalles déjà occupés par les commandes actives,
-     * exprimés en minutes relatives à nowMs (t=0 = maintenant).
+     * exprimés en secondes relatives à nowMs (t=0 = maintenant).
      */
     private List<OccupiedInterval> buildOccupied(long nowMs) {
         List<OccupiedInterval> list = new ArrayList<>();
@@ -112,28 +113,39 @@ public class CommandeService {
             OrderSchedule s = deserialize(commande.scheduleJson());
             long baseMs = commande.placedAt();
             for (ScheduledTask task : s.scheduledTasks()) {
-                long absEnd = baseMs + task.endMinute() * 60_000L;
+                long absEnd = baseMs + task.endSecond() * 1_000L;
                 if (absEnd <= nowMs) continue; // tâche déjà terminée
-                long startMin = Math.max(0L, (baseMs + task.startMinute() * 60_000L - nowMs) / 60_000L);
-                // plafond : on arrondit à la minute supérieure pour ne pas sous-estimer
-                long endMin = (absEnd - nowMs + 59_999L) / 60_000L;
+                long startSec = Math.max(0L, (baseMs + task.startSecond() * 1_000L - nowMs) / 1_000L);
+                long endSec = (absEnd - nowMs + 999L) / 1_000L;
                 for (ResourceType type : task.resources()) {
-                    list.add(new OccupiedInterval(type, task.assignedResourceName(), startMin, endMin));
+                    list.add(new OccupiedInterval(type, task.assignedResourceName(), startSec, endSec));
                 }
             }
         }
         return list;
     }
 
-    private List<DishJob> buildJobs(List<Integer> dishIds) {
+    private List<DishJob> buildJobs(List<Integer> dishIds, double speedMultiplier) {
         List<DishJob> jobs = new ArrayList<>();
         for (int i = 0; i < dishIds.size(); i++) {
             int dishId = dishIds.get(i);
             Dish dish = dishes.getDishById(dishId)
                     .orElseThrow(() -> new IllegalArgumentException("Plat introuvable : " + dishId));
+            if (speedMultiplier != 1.0) {
+                dish = scaleDish(dish, speedMultiplier);
+            }
             jobs.add(new DishJob("job_" + i, dish));
         }
         return jobs;
+    }
+
+    private Dish scaleDish(Dish dish, double speedMultiplier) {
+        List<Task> scaledTasks = dish.tasks().stream()
+                .map(t -> new Task(t.id(), t.name(), t.kind(), t.resources(),
+                        Math.max(1, (int) Math.round(t.duration() * speedMultiplier)),
+                        t.dependencies()))
+                .toList();
+        return new Dish(dish.id(), dish.name(), scaledTasks);
     }
 
     private List<GanttTask> toGanttTasks(String commandeId, int tableNumber,
@@ -151,8 +163,8 @@ public class CommandeService {
                     task.taskName(),
                     kindLabel(task.kind()),
                     resourceName,
-                    baseTime + task.startMinute() * 60_000L,
-                    baseTime + task.endMinute() * 60_000L));
+                    baseTime + task.startSecond() * 1_000L,
+                    baseTime + task.endSecond() * 1_000L));
         }
         return result;
     }

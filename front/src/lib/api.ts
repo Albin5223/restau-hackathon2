@@ -44,10 +44,10 @@ export const api = {
       request<BackendTable>(`/api/tables/${id}/serve`, { method: "POST" }),
   },
   commandes: {
-    place: (tableId: number, dishIds: number[]) =>
+    place: (tableId: number, dishIds: number[], speedMultiplier?: number) =>
       request<BackendCommandeResult>("/api/commandes", {
         method: "POST",
-        body: JSON.stringify({ tableId, dishIds }),
+        body: JSON.stringify({ tableId, dishIds, speedMultiplier }),
       }),
   },
   cuisine: {

@@ -43,7 +43,7 @@ public class TableRepository implements Tables {
         jdbcTemplate.update(UPDATE,
                 table.status().name(),
                 table.partySize(),
-                table.commandeId(),
+                table.orderId(),
                 table.id());
     }
 

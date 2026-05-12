@@ -4,7 +4,7 @@ import java.util.List;
 
 public record GanttTask(
         String id,
-        String commandeId,
+        String orderId,
         int tableNumber,
         String dishName,
         String taskName,

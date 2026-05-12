@@ -70,7 +70,7 @@ public class TableController {
         Table table = tables.getTableById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
         Table updated = new Table(table.id(), table.number(), table.seats(),
-                TableStatus.SERVIE, table.partySize(), table.commandeId());
+                TableStatus.SERVIE, table.partySize(), table.orderId());
         tables.save(updated);
         return updated;
     }

@@ -3,6 +3,7 @@ package fr.ultime.restoptim.application.api;
 import java.util.ArrayList;
 import java.util.List;
 
+import fr.ultime.restoptim.domain.model.order.OrderId;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,8 +41,8 @@ public class SchedulerController {
             jobs.add(new DishJob("job_" + index, dish));
         }
 
-        String orderId = (body.orderId() == null || body.orderId().isBlank())
-                ? "cmd_" + System.currentTimeMillis()
+        OrderId orderId = (body.orderId() == null || body.orderId().isBlank())
+                ? OrderId.from("cmd_" + System.currentTimeMillis())
                 : body.orderId();
 
         try {
@@ -53,6 +54,6 @@ public class SchedulerController {
         }
     }
 
-    public record ScheduleRequest(String orderId, List<Integer> dishIds) {
+    public record ScheduleRequest(OrderId orderId, List<Integer> dishIds) {
     }
 }

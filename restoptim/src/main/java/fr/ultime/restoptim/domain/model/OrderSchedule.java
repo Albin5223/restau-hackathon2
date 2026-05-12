@@ -1,9 +1,11 @@
 package fr.ultime.restoptim.domain.model;
 
+import fr.ultime.restoptim.domain.model.order.OrderId;
+
 import java.util.List;
 
 public record OrderSchedule(
-        String orderId,
+        OrderId orderId,
         long serviceTimeSecond,
         List<ScheduledTask> scheduledTasks) {
 }

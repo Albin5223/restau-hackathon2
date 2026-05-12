@@ -1,9 +1,9 @@
-package fr.ultime.restoptim.domain.model;
+package fr.ultime.restoptim.domain.model.order;
 
 import java.util.List;
 
 public record Order(
-        String id,
+        OrderId id,
         int tableId,
         long placedAt,
         List<Integer> dishIds,

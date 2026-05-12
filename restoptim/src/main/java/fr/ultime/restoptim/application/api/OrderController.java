@@ -2,6 +2,7 @@ package fr.ultime.restoptim.application.api;
 
 import java.util.List;
 
+import fr.ultime.restoptim.domain.model.table.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -35,7 +36,7 @@ public class OrderController {
                 : 1.0;
         try {
             logger.debug("[ORDER] Appel OrderService.placeOrder pour tableId={}", body.tableId());
-            OrderResult result = orderService.placeOrder(body.tableId(), body.dishIds(), multiplier);
+            OrderResult result = orderService.placeOrder(TableId.from(body.tableId()), body.dishIds(), multiplier);
             logger.info("[ORDER] Succès: orderId={}, serviceTime={}", result.orderId(), result.serviceTimeAt());
             return result;
         } catch (IllegalArgumentException e) {
@@ -47,6 +48,6 @@ public class OrderController {
         }
     }
 
-    public record PlaceOrderRequest(int tableId, List<Integer> dishIds, Double speedMultiplier) {
+    public record PlaceOrderRequest(long tableId, List<Integer> dishIds, Double speedMultiplier) {
     }
 }

@@ -1,4 +1,4 @@
-package fr.ultime.restoptim.domain.model;
+package fr.ultime.restoptim.domain.model.table;
 
 import java.util.Locale;
 

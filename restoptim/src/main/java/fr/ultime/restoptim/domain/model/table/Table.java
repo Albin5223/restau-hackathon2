@@ -1,9 +1,9 @@
-package fr.ultime.restoptim.domain.model;
+package fr.ultime.restoptim.domain.model.table;
 
 import fr.ultime.restoptim.domain.model.order.OrderId;
 
 public record Table(
-        int id,
+        TableId id,
         int number,
         int seats,
         TableStatus status,

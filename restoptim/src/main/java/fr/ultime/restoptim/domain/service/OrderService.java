@@ -4,6 +4,7 @@ import java.util.*;
 
 import fr.ultime.restoptim.domain.model.*;
 import fr.ultime.restoptim.domain.model.order.OrderId;
+import fr.ultime.restoptim.domain.model.table.TableId;
 import fr.ultime.restoptim.domain.spi.Orders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,19 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.ultime.restoptim.domain.model.order.Order;
+import fr.ultime.restoptim.domain.model.OrderResult;
+import fr.ultime.restoptim.domain.model.Dish;
+import fr.ultime.restoptim.domain.model.DishJob;
+import fr.ultime.restoptim.domain.model.GanttTask;
+import fr.ultime.restoptim.domain.model.OccupiedInterval;
+import fr.ultime.restoptim.domain.model.OrderRequest;
+import fr.ultime.restoptim.domain.model.OrderSchedule;
+import fr.ultime.restoptim.domain.model.ResourceType;
+import fr.ultime.restoptim.domain.model.ScheduledTask;
+import fr.ultime.restoptim.domain.model.table.Table;
+import fr.ultime.restoptim.domain.model.table.TableStatus;
+import fr.ultime.restoptim.domain.model.Task;
+import fr.ultime.restoptim.domain.model.TaskKind;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import fr.ultime.restoptim.domain.spi.Tables;
 import fr.ultime.restoptim.scheduler.KitchenScheduler;
@@ -40,7 +54,7 @@ public class OrderService {
      * 3. Les plannings des commandes existantes sont mis à jour en base.
      */
     @Transactional
-    public OrderResult placeOrder(int tableId, List<Integer> dishIds, double speedMultiplier) {
+    public OrderResult placeOrder(TableId tableId, List<Integer> dishIds, double speedMultiplier) {
         logger.info("[SERVICE] placeCommande: tableId={}, plats={}, multiplicateur={}", tableId, dishIds, speedMultiplier);
 
         Table table = tables.getTableById(tableId)

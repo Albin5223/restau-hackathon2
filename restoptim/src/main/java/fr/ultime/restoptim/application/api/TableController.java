@@ -2,6 +2,7 @@ package fr.ultime.restoptim.application.api;
 
 import java.util.List;
 
+import fr.ultime.restoptim.domain.model.table.TableId;
 import fr.ultime.restoptim.domain.spi.Orders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,8 +13,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import fr.ultime.restoptim.domain.model.Table;
-import fr.ultime.restoptim.domain.model.TableStatus;
+import fr.ultime.restoptim.domain.model.table.Table;
+import fr.ultime.restoptim.domain.model.table.TableStatus;
 import fr.ultime.restoptim.domain.spi.Tables;
 import lombok.RequiredArgsConstructor;
 
@@ -31,14 +32,14 @@ public class TableController {
     }
 
     @GetMapping("/{id}")
-    public Table get(@PathVariable int id) {
-        return tables.getTableById(id)
+    public Table get(@PathVariable long id) {
+        return tables.getTableById(TableId.from(id))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
     }
 
     @PostMapping("/{id}/install")
-    public Table install(@PathVariable int id, @RequestBody InstallRequest body) {
-        Table table = tables.getTableById(id)
+    public Table install(@PathVariable long id, @RequestBody InstallRequest body) {
+        Table table = tables.getTableById(TableId.from(id))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
         if (table.status() != TableStatus.LIBRE) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La table n'est pas libre.");
@@ -54,8 +55,8 @@ public class TableController {
     }
 
     @PostMapping("/{id}/release")
-    public Table release(@PathVariable int id) {
-        Table table = tables.getTableById(id)
+    public Table release(@PathVariable long id) {
+        Table table = tables.getTableById(TableId.from(id))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
         if (table.orderId() != null) {
             commandes.closeOrder(table.orderId());
@@ -66,8 +67,8 @@ public class TableController {
     }
 
     @PostMapping("/{id}/serve")
-    public Table serve(@PathVariable int id) {
-        Table table = tables.getTableById(id)
+    public Table serve(@PathVariable long id) {
+        Table table = tables.getTableById(TableId.from(id))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
         Table updated = new Table(table.id(), table.number(), table.seats(),
                 TableStatus.SERVIE, table.partySize(), table.orderId());

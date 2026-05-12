@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import fr.ultime.restoptim.domain.model.job.JobId;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +26,7 @@ import com.google.ortools.sat.IntervalVar;
 import com.google.ortools.sat.LinearArgument;
 import com.google.ortools.sat.LinearExpr;
 
-import fr.ultime.restoptim.domain.model.DishJob;
+import fr.ultime.restoptim.domain.model.job.DishJob;
 import fr.ultime.restoptim.domain.model.OccupiedInterval;
 import fr.ultime.restoptim.domain.model.OrderRequest;
 import fr.ultime.restoptim.domain.model.OrderSchedule;
@@ -99,14 +100,14 @@ public class KitchenScheduler {
         Map<ResourceType, List<IntervalVar>> intervalsByType = new HashMap<>();
 
         // Par commande : jobId → IntVar start/end du dressage
-        Map<OrderId, Map<String, IntVar>> platingStartByOrder = new HashMap<>();
-        Map<OrderId, Map<String, IntVar>> platingEndByOrder = new HashMap<>();
+        Map<OrderId, Map<JobId, IntVar>> platingStartByOrder = new HashMap<>();
+        Map<OrderId, Map<JobId, IntVar>> platingEndByOrder = new HashMap<>();
         List<IntVar> cookingGapVars = new ArrayList<>();
 
         // --- Variables de tâches ---
         for (OrderRequest order : orders) {
-            Map<String, IntVar> pStarts = new HashMap<>();
-            Map<String, IntVar> pEnds = new HashMap<>();
+            Map<JobId, IntVar> pStarts = new HashMap<>();
+            Map<JobId, IntVar> pEnds = new HashMap<>();
             platingStartByOrder.put(order.orderId(), pStarts);
             platingEndByOrder.put(order.orderId(), pEnds);
 
@@ -157,7 +158,7 @@ public class KitchenScheduler {
 
         // --- Contraintes de précédence, dressage après tout, fenêtre cuisson ---
         for (OrderRequest order : orders) {
-            Map<String, IntVar> pStarts = platingStartByOrder.get(order.orderId());
+            Map<JobId, IntVar> pStarts = platingStartByOrder.get(order.orderId());
 
             for (DishJob job : order.jobs()) {
                 IntVar platingStart = pStarts.get(job.jobId());
@@ -202,19 +203,19 @@ public class KitchenScheduler {
         List<IntVar> serviceGapVars = new ArrayList<>();
 
         for (OrderRequest order : orders) {
-            Map<String, IntVar> pEnds = platingEndByOrder.get(order.orderId());
+            Map<JobId, IntVar> pEnds = platingEndByOrder.get(order.orderId());
             int tol = computeEffectivePlatingTolerance(order, capacityByType);
 
             IntVar svcTime = model.newIntVar(0, horizon, "svc_" + order.orderId());
             model.addMaxEquality(svcTime, new ArrayList<>(pEnds.values()));
             serviceTimeByOrder.put(order.orderId(), svcTime);
 
-            for (Map.Entry<String, IntVar> e : pEnds.entrySet()) {
+            for (Map.Entry<JobId, IntVar> e : pEnds.entrySet()) {
                 IntVar pe = e.getValue();
                 model.addLessOrEqual(pe, svcTime);
                 model.addGreaterOrEqual(pe, LinearExpr.affine(svcTime, 1, -tol));
 
-                IntVar gap = model.newIntVar(0, tol, "sg_" + order.orderId() + "_" + e.getKey());
+                IntVar gap = model.newIntVar(0, tol, "sg_" + order.orderId().value() + "_" + e.getKey().value());
                 model.addEquality(gap, LinearExpr.weightedSum(
                         new LinearArgument[]{svcTime, pe}, new long[]{1L, -1L}));
                 serviceGapVars.add(gap);
@@ -310,8 +311,8 @@ public class KitchenScheduler {
 
     // ─── Méthodes utilitaires ─────────────────────────────────────────────────
 
-    private static String key(OrderId orderId, String jobId, int taskId) {
-        return orderId.value() + "§" + jobId + "§" + taskId;
+    private static String key(OrderId orderId, JobId jobId, int taskId) {
+        return orderId.value() + "§" + jobId.value() + "§" + taskId;
     }
 
     private Map<ResourceType, Integer> capacityByType() {
@@ -369,7 +370,7 @@ public class KitchenScheduler {
         if (order.jobs() == null || order.jobs().isEmpty())
             throw new IllegalArgumentException("La commande doit contenir au moins un plat.");
 
-        Set<String> jobIds = new HashSet<>();
+        Set<JobId> jobIds = new HashSet<>();
         for (DishJob job : order.jobs()) {
             if (job.jobId() == null || job.jobId().isBlank())
                 throw new IllegalArgumentException("jobId requis pour chaque DishJob.");
@@ -403,7 +404,7 @@ public class KitchenScheduler {
         }
     }
 
-    private boolean hasCycle(Task task, Map<Integer, Task> byId, Map<Integer, Integer> state, String jobId) {
+    private boolean hasCycle(Task task, Map<Integer, Task> byId, Map<Integer, Integer> state, JobId jobId) {
         state.put(task.id(), 1);
         for (int depId : task.dependencies()) {
             Task dep = byId.get(depId);

@@ -4,6 +4,7 @@ import java.util.*;
 
 import fr.ultime.restoptim.domain.model.*;
 import fr.ultime.restoptim.domain.model.dish.DishId;
+import fr.ultime.restoptim.domain.model.job.JobId;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 import fr.ultime.restoptim.domain.model.table.TableId;
 import fr.ultime.restoptim.domain.spi.Orders;
@@ -18,7 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.model.OrderResult;
 import fr.ultime.restoptim.domain.model.dish.Dish;
-import fr.ultime.restoptim.domain.model.DishJob;
+import fr.ultime.restoptim.domain.model.job.DishJob;
 import fr.ultime.restoptim.domain.model.GanttTask;
 import fr.ultime.restoptim.domain.model.OccupiedInterval;
 import fr.ultime.restoptim.domain.model.OrderRequest;
@@ -140,13 +141,13 @@ public class OrderService {
             Map<DishId, Dish> dishById = loadDishes(order.dishIds());
 
             // Grouper les tâches planifiées par jobId, dans l'ordre d'apparition
-            Map<String, List<ScheduledTask>> tasksByJob = new LinkedHashMap<>();
+            Map<JobId, List<ScheduledTask>> tasksByJob = new LinkedHashMap<>();
             for (ScheduledTask st : schedule.scheduledTasks())
                 tasksByJob.computeIfAbsent(st.jobId(), k -> new ArrayList<>()).add(st);
 
             // Classer chaque tâche : TERMINEE / EN_COURS / EN_ATTENTE
-            Map<String, Map<Integer, TaskStatus>> status = new HashMap<>();
-            Map<String, Map<Integer, Long>> endSec = new HashMap<>(); // fin relative à now (en secondes)
+            Map<JobId, Map<Integer, TaskStatus>> status = new HashMap<>();
+            Map<JobId, Map<Integer, Long>> endSec = new HashMap<>(); // fin relative à now (en secondes)
 
             for (ScheduledTask st : schedule.scheduledTasks()) {
                 long absStart = baseMs + st.startSecond() * 1000L;
@@ -181,8 +182,8 @@ public class OrderService {
             List<DishJob> pendingJobs = new ArrayList<>();
             boolean hasAnyPending = false;
 
-            for (Map.Entry<String, List<ScheduledTask>> entry : tasksByJob.entrySet()) {
-                String origJobId = entry.getKey();
+            for (Map.Entry<JobId, List<ScheduledTask>> entry : tasksByJob.entrySet()) {
+                JobId origJobId = entry.getKey();
                 List<ScheduledTask> jobTasks = entry.getValue();
 
                 DishId dishId = jobTasks.get(0).dishId();
@@ -225,9 +226,9 @@ public class OrderService {
                 }
 
                 if (!pendingTaskList.isEmpty()) {
-                    String prefixedJobId = order.id() + "_" + origJobId;
+                    String prefixedJobId = order.id().value() + "_" + origJobId.value();
                     Dish pendingDish = new Dish(dishId, jobTasks.get(0).dishName(), pendingTaskList);
-                    pendingJobs.add(new DishJob(prefixedJobId, pendingDish));
+                    pendingJobs.add(new DishJob(JobId.from(prefixedJobId), pendingDish));
                 }
             }
 
@@ -254,7 +255,7 @@ public class OrderService {
         Map<String, ScheduledTask> updatedByKey = new HashMap<>();
         for (ScheduledTask st : updatedSchedule.scheduledTasks()) {
             String origJobId = st.jobId().startsWith(prefix)
-                    ? st.jobId().substring(prefix.length()) : st.jobId();
+                    ? st.jobId().substring(prefix.length()) : st.jobId().value();
             updatedByKey.put(origJobId + "#" + st.taskId(), st);
         }
 
@@ -300,8 +301,10 @@ public class OrderService {
             DishId dishId = dishIds.get(i);
             Dish dish = dishes.getDishById(dishId)
                     .orElseThrow(() -> new IllegalArgumentException("Plat introuvable : " + dishId));
-            if (speedMultiplier != 1.0) dish = scaleDish(dish, speedMultiplier);
-            jobs.add(new DishJob("job_" + i, dish));
+            if (speedMultiplier != 1.0) {
+                dish = scaleDish(dish, speedMultiplier);
+            }
+            jobs.add(new DishJob(JobId.from("job_" + i), dish));
         }
         return jobs;
     }

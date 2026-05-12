@@ -132,6 +132,7 @@ function toScheduledStep(task: BackendCommandeResult["scheduledTasks"][0]): Sche
     orderId: task.commandeId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
+    stepName: task.taskName,
     kind: task.kind,
     resourceId: task.resourceName,
     resourceLabel: task.resourceName,

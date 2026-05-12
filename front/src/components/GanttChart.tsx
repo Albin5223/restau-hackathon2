@@ -31,7 +31,7 @@ export function GanttChart({ steps }: Props) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
+    const id = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(id);
   }, []);
 
@@ -139,7 +139,18 @@ export function GanttChart({ steps }: Props) {
             </div>
           </div>
 
-          <div className="mt-2">
+          <div className="relative mt-2">
+            {showNow && (
+              <div className="pointer-events-none absolute inset-0 z-10 grid grid-cols-[140px_1fr]">
+                <div />
+                <div className="relative">
+                  <div
+                    className="absolute inset-y-0 w-px bg-red-500"
+                    style={{ left: `${nowPct}%` }}
+                  />
+                </div>
+              </div>
+            )}
             {rows.map(({ id, label }) => {
               const rowSteps = visibleSteps.filter((s) => s.resourceId === id);
               return (
@@ -158,26 +169,23 @@ export function GanttChart({ steps }: Props) {
                         style={{ left: `${((ts - baseTime) / totalMs) * 100}%` }}
                       />
                     ))}
-                    {showNow && (
-                      <div
-                        className="pointer-events-none absolute top-0 z-10 h-full w-px bg-red-500"
-                        style={{ left: `${nowPct}%` }}
-                      />
-                    )}
                     {rowSteps.map((step) => {
                       const left = ((step.startAt - baseTime) / totalMs) * 100;
                       const width = ((step.endAt - step.startAt) / totalMs) * 100;
                       return (
                         <div
                           key={step.id}
-                          className={`absolute top-1 flex h-6 items-center overflow-hidden rounded border px-1 text-[10px] font-medium leading-none shadow-sm ${kindColor(step.kind)} ${step.status === "termine" ? "opacity-40" : ""}`}
+                          className={`absolute top-1 flex h-6 flex-col justify-center overflow-hidden rounded border px-1 leading-tight shadow-sm ${kindColor(step.kind)} ${step.status === "termine" ? "opacity-40" : ""}`}
                           style={{
                             left: `${left}%`,
                             width: `${Math.max(width, 1.5)}%`,
                           }}
-                          title={`T${step.tableNumber} · ${step.recipeName} · ${kindLabel(step.kind)}`}
+                          title={`T${step.tableNumber} · ${step.recipeName} · ${step.stepName} (${kindLabel(step.kind)})`}
                         >
-                          <span className="truncate">
+                          <span className="truncate text-[10px] font-semibold">
+                            {step.stepName}
+                          </span>
+                          <span className="truncate text-[9px] opacity-80">
                             T{step.tableNumber} · {step.recipeName}
                           </span>
                         </div>

@@ -82,8 +82,6 @@ export function validateRecipe(
     const pos = i + 1;
     if (!step.nom.trim())
       errors.push(`Étape ${pos} : le nom est obligatoire.`);
-    if (step.ressource.length === 0)
-      errors.push(`Étape ${pos} : au moins une ressource.`);
     if (!(step.duree > 0))
       errors.push(`Étape ${pos} : la durée doit être > 0.`);
     for (const d of step.deps) {

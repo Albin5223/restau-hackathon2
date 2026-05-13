@@ -10,6 +10,7 @@ const stepLabel: Record<string, string> = {
   preparation: "Préparation",
   cuisson: "Cuisson",
   dressage: "Dressage",
+  other: "Attente",
 };
 
 function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
@@ -17,6 +18,23 @@ function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
   let status: ScheduledStepStatus = "a_venir";
   if (task.endAt < now) status = "termine";
   else if (task.startAt <= now) status = "en_cours";
+
+  if (task.resourceNames.length === 0) {
+    return [{
+      id: task.id,
+      orderId: task.commandeId,
+      tableNumber: task.tableNumber,
+      recipeName: task.dishName,
+      stepName: task.taskName,
+      kind: task.kind,
+      resourceId: `__no_resource__:${task.id}`,
+      resourceLabel: "Sans ressource",
+      startAt: task.startAt,
+      endAt: task.endAt,
+      status,
+    }];
+  }
+
   return task.resourceNames.map((name, idx) => ({
     id: idx === 0 ? task.id : `${task.id}__r${idx}`,
     orderId: task.commandeId,
@@ -124,5 +142,7 @@ function badgeForKind(kind: string) {
     return "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300";
   if (kind === "cuisson")
     return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300";
-  return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
+  if (kind === "dressage")
+    return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
+  return "bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
 }

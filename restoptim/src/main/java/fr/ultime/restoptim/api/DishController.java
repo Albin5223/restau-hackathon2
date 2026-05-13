@@ -1,8 +1,13 @@
 package fr.ultime.restoptim.api;
 
+import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,6 +32,8 @@ public class DishController {
 
     private final Dishes dishes;
     private final ObjectMapper objectMapper;
+
+    private final Logger logger = LoggerFactory.getLogger(DishController.class);
 
     @GetMapping
     public List<DishResponse> list() {
@@ -54,6 +61,48 @@ public class DishController {
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Format de tâches invalide.");
         }
+    }
+
+    @PostMapping("/import")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
+    public List<DishResponse> importDishes(@RequestBody List<CreateDishRequest> body) {
+        if (body == null || body.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La liste de plats est vide.");
+        }
+        List<DishResponse> results = new ArrayList<>();
+        for (int i = 0; i < body.size(); i++) {
+            CreateDishRequest req = body.get(i);
+            if (req.name() == null || req.name().isBlank()) {
+                logger.warn("Plat #{} : nom manquant", i + 1);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Le nom du plat #" + (i + 1) + " est requis.");
+            }
+            if (req.tasks() == null) {
+                logger.warn("Plat #{} : tâches manquantes", i + 1);
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Les tâches du plat \"" + req.name() + "\" sont requises.");
+            }
+            try {
+                String tasksJson = objectMapper.writeValueAsString(req.tasks());
+                results.add(toResponse(dishes.save(req.name().trim(), tasksJson)));
+            } catch (DataIntegrityViolationException e) {
+                logger.warn("Plat #{} : nom en doublon - {}", i + 1, req.name());
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Un plat avec le nom \"" + req.name().trim() + "\" existe déjà.");
+            } catch (JsonProcessingException e) {
+                logger.warn("Plat #{} : format de tâches invalide - {}", i + 1, req.name());
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Format de tâches invalide pour \"" + req.name() + "\".");
+            } catch (ResponseStatusException e) {
+                throw e;
+            } catch (Exception e) {
+                logger.warn("Plat #{} : erreur inattendue - {} : {}", i + 1, req.name(), e.getMessage());
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Erreur pour \"" + req.name() + "\" : " + e.getMessage());
+            }
+        }
+        return results;
     }
 
     private DishResponse toResponse(Dish dish) {

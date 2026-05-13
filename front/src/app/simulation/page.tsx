@@ -127,6 +127,23 @@ function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): Sch
   let status: ScheduledStepStatus = "a_venir";
   if (task.endAt < now) status = "termine";
   else if (task.startAt <= now) status = "en_cours";
+
+  if (task.resourceNames.length === 0) {
+    return [{
+      id: task.id,
+      orderId: task.commandeId,
+      tableNumber: task.tableNumber,
+      recipeName: task.dishName,
+      stepName: task.taskName,
+      kind: task.kind,
+      resourceId: `__no_resource__:${task.id}`,
+      resourceLabel: "Sans ressource",
+      startAt: task.startAt,
+      endAt: task.endAt,
+      status,
+    }];
+  }
+
   return task.resourceNames.map((name, idx) => ({
     id: idx === 0 ? task.id : `${task.id}__r${idx}`,
     orderId: task.commandeId,

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { ScheduledStep, ScheduledStepStatus } from "@/lib/types";
 import { formatDuration } from "@/lib/format";
 
-function kindColor(kind: string): string {
+function kindColor(kind: string, noResource = false): string {
+  if (noResource) return "bg-zinc-300/80 border-zinc-400 text-zinc-700 border-dashed";
   if (kind === "cuisson") return "bg-amber-500/80 border-amber-600 text-white";
   if (kind === "dressage") return "bg-emerald-500/80 border-emerald-600 text-white";
   return "bg-blue-500/80 border-blue-600 text-white";
@@ -100,8 +101,16 @@ export function GanttChart({ steps }: Props) {
 
   const rows = useMemo(() => {
     const seen = new Map<string, string>();
+    let noResCount = 0;
     for (const s of steps) {
-      if (!seen.has(s.resourceId)) seen.set(s.resourceId, s.resourceLabel);
+      if (!seen.has(s.resourceId)) {
+        if (s.resourceId.startsWith("__no_resource__")) {
+          noResCount++;
+          seen.set(s.resourceId, `Sans ressource ${noResCount}`);
+        } else {
+          seen.set(s.resourceId, s.resourceLabel);
+        }
+      }
     }
     return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
   }, [steps]);
@@ -206,12 +215,23 @@ export function GanttChart({ steps }: Props) {
               )}
               {rows.map(({ id, label }) => {
                 const rowSteps = visibleSteps.filter((s) => s.resourceId === id);
+                const isNoResource = id.startsWith("__no_resource__");
                 return (
                   <div
                     key={id}
-                    className="grid grid-cols-[140px_1fr] items-center border-b border-zinc-100 py-2 dark:border-zinc-900"
+                    className={`grid grid-cols-[140px_1fr] items-center border-b py-2 ${
+                      isNoResource
+                        ? "border-dashed border-zinc-200 dark:border-zinc-800"
+                        : "border-zinc-100 dark:border-zinc-900"
+                    }`}
                   >
-                    <div className="pr-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    <div
+                      className={`pr-3 text-sm font-medium ${
+                        isNoResource
+                          ? "italic text-zinc-400 dark:text-zinc-500"
+                          : "text-zinc-700 dark:text-zinc-300"
+                      }`}
+                    >
                       {label}
                     </div>
                     <div className="relative h-8">
@@ -225,6 +245,7 @@ export function GanttChart({ steps }: Props) {
                       {rowSteps.map((step) => {
                         const left = ((step.startAt - baseTime) / totalMs) * 100;
                         const width = ((step.endAt - step.startAt) / totalMs) * 100;
+                        const isNoResourceStep = step.resourceId.startsWith("__no_resource__");
                         const isActive =
                           activeOrderId === null || step.orderId === activeOrderId;
                         const isSelected = step.orderId === selectedOrderId;
@@ -245,7 +266,7 @@ export function GanttChart({ steps }: Props) {
                         return (
                           <div
                             key={step.id}
-                            className={`absolute top-1 flex h-6 cursor-pointer flex-col justify-center overflow-hidden rounded border px-1 leading-tight shadow-sm transition-opacity ${kindColor(step.kind)} ${opacity} ${ring}`}
+                            className={`absolute top-1 flex h-6 cursor-pointer flex-col justify-center overflow-hidden rounded border px-1 leading-tight transition-opacity ${isNoResourceStep ? "" : "shadow-sm"} ${kindColor(step.kind, isNoResourceStep)} ${opacity} ${ring}`}
                             style={{
                               left: `${left}%`,
                               width: `${Math.max(width, 1.5)}%`,

@@ -45,6 +45,7 @@ type CreationMode = "simple" | "graph";
 export default function MenuPage() {
   const { recipes, addRecipe } = useRecipes();
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [mode, setMode] = useState<CreationMode>("simple");
   const [resourceTypes, setResourceTypes] = useState<ResourceTypeDto[]>([]);
 
@@ -63,16 +64,25 @@ export default function MenuPage() {
 
   return (
     <>
+      {showImport && <ImportModal onClose={() => setShowImport(false)} />}
       <PageHeader
         title="Menu"
         subtitle={`${recipes.length} plats — étapes, dépendances et ressources`}
         actions={
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            {showForm ? "Fermer" : "+ Nouveau plat"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              Importer
+            </button>
+            <button
+              onClick={() => setShowForm((v) => !v)}
+              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              {showForm ? "Fermer" : "+ Nouveau plat"}
+            </button>
+          </div>
         }
       />
 
@@ -176,6 +186,162 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
         ))}
       </ol>
     </article>
+  );
+}
+
+// ─── ImportModal ──────────────────────────────────────────────────────────────
+
+function ImportModal({ onClose }: { onClose: () => void }) {
+  const { reloadRecipes } = useRecipes();
+  const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function pickFile(f: File) {
+    setFile(f);
+    setError(null);
+    setSuccess(null);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f) pickFile(f);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) pickFile(f);
+  }
+
+  async function handleImport() {
+    if (!file) return;
+    setError(null);
+    setSuccess(null);
+    setLoading(true);
+    try {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        setError("Fichier JSON invalide — impossible de le parser.");
+        return;
+      }
+      const dishList = (Array.isArray(parsed) ? parsed : [parsed]) as Array<{
+        name: string;
+        tasks: Recipe["tasks"];
+      }>;
+      const imported = await api.dishes.importBatch(dishList);
+      await reloadRecipes();
+      setSuccess(
+        `${imported.length} plat${imported.length > 1 ? "s" : ""} importé${imported.length > 1 ? "s" : ""} avec succès.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          Importer des plats
+        </h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Format attendu : objet unique ou tableau JSON{" "}
+          <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">
+            {"[{ name, tasks: { etapes: [...] } }]"}
+          </code>
+          . La durée (<code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">duree</code>) est en secondes.
+        </p>
+
+        {/* Drag & drop zone */}
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          className={`mt-4 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
+            dragging
+              ? "border-zinc-900 bg-zinc-50 dark:border-zinc-400 dark:bg-zinc-900"
+              : "border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950"
+          }`}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="mb-2 h-8 w-8 text-zinc-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+            />
+          </svg>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Glissez un fichier JSON ici
+          </p>
+          <p className="my-1.5 text-xs text-zinc-400">ou</p>
+          <label className="cursor-pointer rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900">
+            Parcourir…
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="sr-only"
+              onChange={handleFileChange}
+            />
+          </label>
+          {file && (
+            <p className="mt-3 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              {file.name}
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            {error}
+          </p>
+        )}
+
+        {success && (
+          <p className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300">
+            {success}
+          </p>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            {success ? "Fermer" : "Annuler"}
+          </button>
+          {!success && (
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={!file || loading}
+              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              {loading ? "Import en cours…" : "Importer"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

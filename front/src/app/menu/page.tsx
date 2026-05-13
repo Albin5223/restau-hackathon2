@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useRecipes } from "@/components/RecipesProvider";
+import { useResources } from "@/components/ResourcesProvider";
 import { RecipeGraphEditor } from "@/components/RecipeGraphEditor";
-import { allResources, computeSchedule, validateRecipe } from "@/lib/recipes";
+import { allResources, computeSchedule, missingResources, validateRecipe } from "@/lib/recipes";
 import { formatDuration } from "@/lib/format";
 import type { Recipe, RecipeStep, ResourceTypeDto } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -58,15 +60,11 @@ type CreationMode = "simple" | "graph";
 
 export default function MenuPage() {
   const { recipes, addRecipe, updateRecipe, deleteRecipe } = useRecipes();
+  const { resourceTypes } = useResources();
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editRecipe, setEditRecipe] = useState<Recipe | null>(null);
   const [mode, setMode] = useState<CreationMode>("simple");
-  const [resourceTypes, setResourceTypes] = useState<ResourceTypeDto[]>([]);
-
-  useEffect(() => {
-    api.resources.list().then(setResourceTypes).catch(() => {});
-  }, []);
 
   function handleClose() {
     setShowForm(false);
@@ -165,6 +163,7 @@ export default function MenuPage() {
               <RecipeCard
                 key={recipe.id}
                 recipe={recipe}
+                resourceTypes={resourceTypes}
                 onEdit={() => setEditRecipe(recipe)}
                 onDelete={() => deleteRecipe(recipe.id)}
               />
@@ -180,15 +179,21 @@ export default function MenuPage() {
 
 function RecipeCard({
   recipe,
+  resourceTypes,
   onEdit,
   onDelete,
 }: {
   recipe: Recipe;
+  resourceTypes: ResourceTypeDto[];
   onEdit: () => void;
   onDelete: () => Promise<void>;
 }) {
   const { totalSec } = useMemo(() => computeSchedule(recipe), [recipe]);
   const resourceKinds = allResources(recipe);
+  const missing = useMemo(
+    () => missingResources(recipe, resourceTypes),
+    [recipe, resourceTypes],
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -206,7 +211,13 @@ function RecipeCard({
   }
 
   return (
-    <article className="group flex flex-col rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+    <article
+      className={`group flex flex-col rounded-lg border bg-white p-5 dark:bg-zinc-950 ${
+        missing.length > 0
+          ? "border-amber-300 dark:border-amber-800"
+          : "border-zinc-200 dark:border-zinc-800"
+      }`}
+    >
       <header className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
@@ -270,6 +281,24 @@ function RecipeCard({
           </li>
         ))}
       </ol>
+
+      {missing.length > 0 && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs dark:border-amber-800 dark:bg-amber-950">
+          <p className="font-semibold text-amber-900 dark:text-amber-100">
+            Plat indisponible
+          </p>
+          <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+            Ressource{missing.length > 1 ? "s" : ""} manquante
+            {missing.length > 1 ? "s" : ""} : {missing.join(", ")}
+          </p>
+          <Link
+            href="/ressources"
+            className="mt-1.5 inline-block text-[11px] font-semibold text-amber-900 underline decoration-dotted hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100"
+          >
+            → Ajouter les ressources manquantes
+          </Link>
+        </div>
+      )}
 
       {deleteError && (
         <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

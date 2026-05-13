@@ -17,6 +17,11 @@ export type AutoSimStatus = {
   logs: AutoSimLog[];
 };
 
+export type TimeStatus = {
+  offsetMs: number;
+  autoSimulationActive: boolean;
+};
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -42,25 +47,6 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ name, tasks }),
       }),
-    update: (id: number, name: string, tasks: Recipe["tasks"]) =>
-      request<Recipe>(`/api/dishes/${id}`, {
-        method: "PUT",
-        body: JSON.stringify({ name, tasks }),
-      }),
-    delete: async (id: number) => {
-      const res = await fetch(`${API}/api/dishes/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        let message = `Erreur ${res.status}`;
-        try {
-          const json = await res.json() as { message?: string };
-          if (json.message) message = json.message;
-        } catch {
-          const text = await res.text().catch(() => "");
-          if (text) message = text;
-        }
-        throw new Error(message);
-      }
-    },
     importBatch: async (dishList: Array<{ name: string; tasks: Recipe["tasks"] }>) => {
       const res = await fetch(`${API}/api/dishes/import`, {
         method: "POST",
@@ -105,6 +91,36 @@ export const api = {
   },
   resources: {
     list: () => request<ResourceTypeDto[]>("/api/resources"),
+    usage: () => request<Record<string, number>>("/api/resources/usage"),
+    createType: (name: string) =>
+      request<ResourceTypeDto[]>("/api/resources", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      }),
+    deleteType: (name: string) =>
+      request<ResourceTypeDto[]>(`/api/resources/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      }),
+    addInstance: (name: string) =>
+      request<ResourceTypeDto[]>(
+        `/api/resources/${encodeURIComponent(name)}/instances`,
+        { method: "POST" },
+      ),
+    removeInstance: (name: string) =>
+      request<ResourceTypeDto[]>(
+        `/api/resources/${encodeURIComponent(name)}/instances`,
+        { method: "DELETE" },
+      ),
+  },
+  time: {
+    status: () => request<TimeStatus>("/api/time"),
+    shift: (deltaSec: number) =>
+      request<TimeStatus>("/api/time/shift", {
+        method: "POST",
+        body: JSON.stringify({ deltaSec }),
+      }),
+    reset: () =>
+      request<TimeStatus>("/api/time/reset", { method: "POST" }),
   },
   simulation: {
     status: () => request<AutoSimStatus>("/api/simulation/auto/status"),

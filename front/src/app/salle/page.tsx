@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { FloorPlanView } from "@/components/FloorPlanView";
+import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
 import type {
   BackendGanttTask,
@@ -42,6 +43,7 @@ const STATUSES_REQUIRING_CONFIRMATION: TableStatus[] = [
 ];
 
 export default function SallePage() {
+  const { shiftVersion } = useTime();
   const [tables, setTables] = useState<BackendTable[]>([]);
   const [ganttTasks, setGanttTasks] = useState<BackendGanttTask[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -66,7 +68,8 @@ export default function SallePage() {
     load();
     const id = setInterval(load, 3_000);
     return () => clearInterval(id);
-  }, [load]);
+    // shiftVersion → recharge immédiate après un voyage temporel
+  }, [load, shiftVersion]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);

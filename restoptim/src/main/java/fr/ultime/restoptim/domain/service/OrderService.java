@@ -32,6 +32,7 @@ import fr.ultime.restoptim.domain.model.ScheduledTask;
 import fr.ultime.restoptim.domain.model.table.Table;
 import fr.ultime.restoptim.domain.model.table.TableStatus;
 import fr.ultime.restoptim.domain.spi.Dishes;
+import fr.ultime.restoptim.domain.spi.Resources;
 import fr.ultime.restoptim.domain.spi.Tables;
 import fr.ultime.restoptim.scheduler.KitchenScheduler;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,7 @@ public class OrderService {
     private final Orders orders;
     private final KitchenScheduler scheduler;
     private final ObjectMapper objectMapper;
+    private final TimeShiftService timeShiftService;
 
     /**
      * Place une commande pour une table.
@@ -66,8 +68,12 @@ public class OrderService {
             throw new IllegalStateException("La table " + table.number() + " n'est pas disponible.");
         }
 
-        long now = System.currentTimeMillis();
-        OrderId orderId = OrderId.from("cmd_" + now);
+        long realNow = System.currentTimeMillis();
+        // Si l'opérateur a décalé le temps perçu, la nouvelle commande doit
+        // s'aligner sur cette horloge décalée : placed_at recule de l'offset.
+        long offsetMs = timeShiftService.getOffsetMs();
+        long now = realNow - offsetMs;
+        OrderId orderId = OrderId.from("cmd_" + realNow);
 
         // Construire les jobs de la nouvelle commande
         List<DishJob> newJobs = buildJobs(dishIds, speedMultiplier);

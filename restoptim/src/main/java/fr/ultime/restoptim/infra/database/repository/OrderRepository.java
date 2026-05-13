@@ -34,6 +34,8 @@ public class OrderRepository implements Orders {
             "UPDATE commandes SET status = 'TERMINEE' WHERE id = ?";
     private static final String UPDATE_SCHEDULE =
             "UPDATE commandes SET schedule = ? WHERE id = ?";
+    private static final String SHIFT_PLACED_AT =
+            "UPDATE commandes SET placed_at = placed_at + ? WHERE status = 'EN_PREPARATION'";
 
     private final OrderScheduleJsonMapper orderScheduleMapper;
     private final JdbcTemplate jdbcTemplate;
@@ -65,6 +67,12 @@ public class OrderRepository implements Orders {
     @Override
     public void updateSchedule(OrderId orderId, OrderSchedule orderSchedule) {
         jdbcTemplate.update(UPDATE_SCHEDULE, orderScheduleMapper.toDto(orderSchedule), orderId.value());
+    }
+
+    @Override
+    public int shiftActiveOrdersPlacedAt(long deltaMs) {
+        if (deltaMs == 0) return 0;
+        return jdbcTemplate.update(SHIFT_PLACED_AT, deltaMs);
     }
 
     @Override

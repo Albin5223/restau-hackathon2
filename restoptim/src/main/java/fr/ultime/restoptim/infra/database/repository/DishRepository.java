@@ -60,13 +60,13 @@ public class DishRepository implements Dishes {
     public Dish update(DishId id, String name, String tasksJson) {
         jdbcTemplate.update(
                 "UPDATE recipe_documents SET name = ?, tasks = ? WHERE id = ?",
-                name, tasksJson, id);
+                name, tasksJson, id.value());
         return new Dish(id, name, parseTasks(tasksJson));
     }
 
     @Override
-    public void delete(int id) {
-        jdbcTemplate.update("DELETE FROM recipe_documents WHERE id = ?", id);
+    public void delete(DishId id) {
+        jdbcTemplate.update("DELETE FROM recipe_documents WHERE id = ?", id.value());
     }
 
     @Override

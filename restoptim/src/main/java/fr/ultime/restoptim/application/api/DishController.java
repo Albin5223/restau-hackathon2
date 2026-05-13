@@ -72,18 +72,18 @@ public class DishController {
     }
 
     @PutMapping("/{id}")
-    public DishResponse update(@PathVariable int id, @RequestBody CreateDishRequest body) {
+    public DishResponse update(@PathVariable long id, @RequestBody CreateDishRequest body) {
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le nom du plat est requis.");
         }
         if (body.tasks() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Les tâches du plat sont requises.");
         }
-        dishes.getDishById(id).orElseThrow(() ->
+        dishes.getDishById(DishId.from(id)).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + id));
         try {
             String tasksJson = objectMapper.writeValueAsString(body.tasks());
-            return toResponse(dishes.update(id, body.name().trim(), tasksJson));
+            return toResponse(dishes.update(DishId.from(id), body.name().trim(), tasksJson));
         } catch (DataAccessException e) {
             if (isUniqueViolation(e))
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -96,11 +96,11 @@ public class DishController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable int id) {
-        dishes.getDishById(id).orElseThrow(() ->
+    public void delete(@PathVariable long id) {
+        dishes.getDishById(DishId.from(id)).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + id));
         try {
-            dishes.delete(id);
+            dishes.delete(DishId.from(id));
         } catch (DataAccessException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ce plat est utilisé dans une commande active et ne peut pas être supprimé.");

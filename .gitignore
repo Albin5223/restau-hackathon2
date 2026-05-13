@@ -1,4 +1,7 @@
 ### VS Code ###
 .vscode/
+.claude/
 
+# Project
 restoptim/.mvn/*
+restoptim/data/restoptim.db

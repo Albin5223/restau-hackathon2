@@ -1,5 +1,6 @@
 package fr.ultime.restoptim.domain.model.order;
 
+import fr.ultime.restoptim.domain.model.OrderSchedule;
 import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.table.TableId;
 
@@ -10,5 +11,5 @@ public record Order(
         TableId tableId,
         long placedAt,
         List<DishId> dishIds,
-        String scheduleJson) {
+        OrderSchedule orderSchedule) {
 }

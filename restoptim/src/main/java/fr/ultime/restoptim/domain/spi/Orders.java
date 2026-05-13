@@ -3,6 +3,7 @@ package fr.ultime.restoptim.domain.spi;
 import java.util.List;
 import java.util.Optional;
 
+import fr.ultime.restoptim.domain.model.OrderSchedule;
 import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 
@@ -12,7 +13,7 @@ public interface Orders {
 
     Optional<Order> getOrderById(OrderId id);
 
-    void updateSchedule(OrderId orderId, String scheduleJson);
+    void updateSchedule(OrderId orderId, OrderSchedule scheduleJson);
 
     List<Order> getActiveOrders();
 

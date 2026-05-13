@@ -17,17 +17,20 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import fr.ultime.restoptim.domain.model.dish.Dish;
+import fr.ultime.restoptim.domain.model.dish.DishId;
+import fr.ultime.restoptim.domain.model.order.OrderId;
+import fr.ultime.restoptim.domain.model.table.Table;
+import fr.ultime.restoptim.domain.model.table.TableId;
+import fr.ultime.restoptim.domain.model.table.TableStatus;
+import fr.ultime.restoptim.domain.spi.Orders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import fr.ultime.restoptim.domain.model.AutoSimulationLog;
 import fr.ultime.restoptim.domain.model.AutoSimulationStatus;
-import fr.ultime.restoptim.domain.model.Dish;
 import fr.ultime.restoptim.domain.model.GanttTask;
-import fr.ultime.restoptim.domain.model.Table;
-import fr.ultime.restoptim.domain.model.TableStatus;
-import fr.ultime.restoptim.domain.spi.Commandes;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import fr.ultime.restoptim.domain.spi.Tables;
 
@@ -39,21 +42,21 @@ public class AutoSimulationService {
 
     private final Tables tables;
     private final Dishes dishes;
-    private final Commandes commandes;
-    private final CommandeService commandeService;
+    private final Orders orders;
+    private final OrderService orderService;
 
     private final AtomicBoolean active = new AtomicBoolean(false);
     private final LinkedList<AutoSimulationLog> logs = new LinkedList<>();
     private volatile ScheduledExecutorService executor;
     private volatile double currentSpeedMultiplier = 1.0;
     private final Random random = new Random();
-    private final Set<String> servedCommandeIds = ConcurrentHashMap.newKeySet();
+    private final Set<OrderId> servedOrderIds = ConcurrentHashMap.newKeySet();
 
-    public AutoSimulationService(Tables tables, Dishes dishes, Commandes commandes, CommandeService commandeService) {
+    public AutoSimulationService(Tables tables, Dishes dishes, Orders orders, OrderService orderService) {
         this.tables = tables;
         this.dishes = dishes;
-        this.commandes = commandes;
-        this.commandeService = commandeService;
+        this.orders = orders;
+        this.orderService = orderService;
     }
 
     public boolean isActive() {
@@ -73,7 +76,7 @@ public class AutoSimulationService {
         synchronized (logs) {
             logs.clear();
         }
-        servedCommandeIds.clear();
+        servedOrderIds.clear();
         currentSpeedMultiplier = speedMultiplier;
         active.set(true);
 
@@ -177,7 +180,7 @@ public class AutoSimulationService {
             return;
         }
 
-        List<Integer> dishIds = new ArrayList<>();
+        List<DishId> dishIds = new ArrayList<>();
         List<String> dishNames = new ArrayList<>();
         for (int i = 0; i < partySize; i++) {
             Dish dish = menu.get(random.nextInt(menu.size()));
@@ -189,7 +192,7 @@ public class AutoSimulationService {
 
         // Passer la commande via le service métier
         try {
-            commandeService.placeCommande(table.id(), dishIds, speedMultiplier);
+            orderService.placeOrder(table.id(), dishIds, speedMultiplier);
         } catch (Exception e) {
             addLog("error", "Erreur commande Table " + table.number() + " : " + e.getMessage());
             tables.save(new Table(table.id(), table.number(), table.seats(), TableStatus.LIBRE, null, null));
@@ -200,24 +203,24 @@ public class AutoSimulationService {
         if (!active.get()) return;
         try {
             long now = System.currentTimeMillis();
-            List<GanttTask> ganttTasks = commandeService.getAllActiveGanttTasks();
+            List<GanttTask> ganttTasks = orderService.getAllActiveGanttTasks();
 
             // Grouper les tâches de dressage par commandeId
-            Map<String, List<GanttTask>> platingByCommande = new HashMap<>();
+            Map<OrderId, List<GanttTask>> platingByCommande = new HashMap<>();
             for (GanttTask task : ganttTasks) {
                 if ("dressage".equals(task.kind())) {
-                    platingByCommande.computeIfAbsent(task.commandeId(), k -> new ArrayList<>()).add(task);
+                    platingByCommande.computeIfAbsent(task.orderId(), k -> new ArrayList<>()).add(task);
                 }
             }
 
             // Pour chaque commande : si tous les dressages sont terminés → servir la table
-            for (Map.Entry<String, List<GanttTask>> entry : platingByCommande.entrySet()) {
-                String commandeId = entry.getKey();
-                if (servedCommandeIds.contains(commandeId)) continue;
+            for (Map.Entry<OrderId, List<GanttTask>> entry : platingByCommande.entrySet()) {
+                OrderId commandeId = entry.getKey();
+                if (servedOrderIds.contains(commandeId)) continue;
 
                 boolean allDone = entry.getValue().stream().allMatch(t -> t.endAt() <= now);
                 if (allDone) {
-                    servedCommandeIds.add(commandeId);
+                    servedOrderIds.add(commandeId);
                     serveTableForCommande(commandeId);
                 }
             }
@@ -226,14 +229,14 @@ public class AutoSimulationService {
         }
     }
 
-    private void serveTableForCommande(String commandeId) {
+    private void serveTableForCommande(OrderId orderId) {
         tables.getTables().stream()
-                .filter(t -> Objects.equals(commandeId, t.commandeId()))
+                .filter(t -> Objects.equals(orderId, t.orderId()))
                 .findFirst()
                 .ifPresent(table -> {
                     try {
                         tables.save(new Table(table.id(), table.number(), table.seats(),
-                                TableStatus.SERVIE, table.partySize(), table.commandeId()));
+                                TableStatus.SERVIE, table.partySize(), table.orderId()));
                         addLog("served", "Table " + table.number() + " servie — les clients mangent");
 
                         // Planifier la libération après un temps de repas simulé (20-40 min)
@@ -249,13 +252,13 @@ public class AutoSimulationService {
                 });
     }
 
-    private void releaseTable(int tableId, int tableNumber) {
+    private void releaseTable(TableId tableId, int tableNumber) {
         if (!active.get()) return;
         try {
             Table table = tables.getTableById(tableId).orElse(null);
             if (table == null || table.status() == TableStatus.LIBRE) return;
-            if (table.commandeId() != null) {
-                commandes.closeCommande(table.commandeId());
+            if (table.orderId() != null) {
+                orders.closeOrder(table.orderId());
             }
             tables.save(new Table(table.id(), table.number(), table.seats(), TableStatus.LIBRE, null, null));
             addLog("left", "Table " + tableNumber + " libérée — les clients sont partis");
@@ -268,8 +271,8 @@ public class AutoSimulationService {
         for (Table t : tables.getTables()) {
             if (t.status() == TableStatus.LIBRE) continue;
             try {
-                if (t.commandeId() != null) {
-                    commandes.closeCommande(t.commandeId());
+                if (t.orderId() != null) {
+                    orders.closeOrder(t.orderId());
                 }
                 tables.save(new Table(t.id(), t.number(), t.seats(), TableStatus.LIBRE, null, null));
             } catch (Exception e) {

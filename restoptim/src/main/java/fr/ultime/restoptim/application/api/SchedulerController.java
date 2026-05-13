@@ -3,6 +3,8 @@ package fr.ultime.restoptim.application.api;
 import java.util.ArrayList;
 import java.util.List;
 
+import fr.ultime.restoptim.application.dto.OrderScheduleDto;
+import fr.ultime.restoptim.application.mapper.OrderScheduleMapper;
 import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.job.JobId;
 import fr.ultime.restoptim.domain.model.order.OrderId;
@@ -28,9 +30,10 @@ public class SchedulerController {
 
     private final KitchenScheduler scheduler;
     private final Dishes dishes;
+    private final OrderScheduleMapper orderScheduleMapper;
 
     @PostMapping
-    public OrderSchedule schedule(@RequestBody ScheduleRequest body) {
+    public OrderScheduleDto schedule(@RequestBody ScheduleRequest body) {
         if (body == null || body.dishIds() == null || body.dishIds().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dishIds est requis et non vide.");
         }
@@ -48,7 +51,7 @@ public class SchedulerController {
                 : OrderId.from(body.orderId());
 
         try {
-            return scheduler.schedule(new OrderRequest(orderId, jobs));
+            return orderScheduleMapper.toDto(scheduler.schedule(new OrderRequest(orderId, jobs)));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         } catch (IllegalStateException e) {

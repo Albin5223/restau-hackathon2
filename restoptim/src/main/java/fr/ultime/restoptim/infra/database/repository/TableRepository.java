@@ -45,12 +45,13 @@ public class TableRepository implements Tables {
         jdbcTemplate.update(UPDATE,
                 table.status().name(),
                 table.partySize(),
-                table.orderId(),
-                table.id());
+                table.orderId() == null ? null : table.orderId().value(),
+                table.id().value());
     }
 
     private Table mapRow(ResultSet rs) throws SQLException {
         int rawPartySize = rs.getInt("party_size");
+        OrderId orderId = Optional.ofNullable(rs.getString("commande_id")).map(OrderId::from).orElse(null);
         Integer partySize = rs.wasNull() ? null : rawPartySize;
         return new Table(
                 TableId.from((long)rs.getInt("id")),
@@ -58,6 +59,6 @@ public class TableRepository implements Tables {
                 rs.getInt("seats"),
                 TableStatus.valueOf(rs.getString("status")),
                 partySize,
-                OrderId.from(rs.getString("commande_id")));
+                orderId);
     }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { FloorPlanView } from "@/components/FloorPlanView";
 import { api } from "@/lib/api";
@@ -35,6 +35,11 @@ const kindBadge: Record<string, string> = {
   cuisson: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
   dressage: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
 };
+
+const STATUSES_REQUIRING_CONFIRMATION: TableStatus[] = [
+  "commande_passee",
+  "en_preparation",
+];
 
 export default function SallePage() {
   const [tables, setTables] = useState<BackendTable[]>([]);
@@ -71,6 +76,14 @@ export default function SallePage() {
   const selected = useMemo(
     () => tables.find((t) => t.id === selectedId) ?? null,
     [tables, selectedId],
+  );
+
+  const clearTable = useCallback(
+    async (tableId: number) => {
+      await api.tables.release(tableId);
+      await load();
+    },
+    [load],
   );
 
   const selectedTasks = useMemo(() => {
@@ -121,6 +134,7 @@ export default function SallePage() {
               table={selected}
               tasks={selectedTasks}
               now={now}
+              onClear={() => clearTable(selected.id)}
             />
           ) : (
             <p className="text-sm text-zinc-500">
@@ -163,11 +177,34 @@ function SelectedTablePanel({
   table,
   tasks,
   now,
+  onClear,
 }: {
   table: BackendTable;
   tasks: BackendGanttTask[];
   now: number;
+  onClear: () => void;
 }) {
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const prevTableId = useRef(table.id);
+
+  if (prevTableId.current !== table.id) {
+    prevTableId.current = table.id;
+    if (confirmingClear) setConfirmingClear(false);
+  }
+
+  function handleClearClick() {
+    if (STATUSES_REQUIRING_CONFIRMATION.includes(table.status)) {
+      setConfirmingClear(true);
+    } else {
+      onClear();
+    }
+  }
+
+  function handleConfirm() {
+    setConfirmingClear(false);
+    onClear();
+  }
+
   const window = tasks.length
     ? {
         startAt: Math.min(...tasks.map((t) => t.startAt)),
@@ -272,6 +309,40 @@ function SelectedTablePanel({
           Aucune commande active (planning vide ou déjà servie).
         </p>
       ) : null}
+
+      <div className="mt-auto flex flex-col gap-2">
+        {table.status !== "libre" ? (
+          confirmingClear ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
+              <p className="mb-3 text-xs text-amber-800 dark:text-amber-300">
+                Les plats sont encore en cours de préparation. Libérer la table
+                annulera le planning en cuisine. Confirmer ?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirm}
+                  className="flex-1 rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+                >
+                  Confirmer
+                </button>
+                <button
+                  onClick={() => setConfirmingClear(false)}
+                  className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleClearClick}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              Libérer la table
+            </button>
+          )
+        ) : null}
+      </div>
     </div>
   );
 }

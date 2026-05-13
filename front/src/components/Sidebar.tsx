@@ -7,7 +7,7 @@ const links = [
   { href: "/", label: "Vue d'ensemble" },
   { href: "/cuisine", label: "Cuisine" },
   { href: "/salle", label: "Salle" },
-  { href: "/tables", label: "Tables" },
+  //{ href: "/tables", label: "Tables" },
   { href: "/menu", label: "Menu" },
   { href: "/simulation", label: "Simulation" },
 ];

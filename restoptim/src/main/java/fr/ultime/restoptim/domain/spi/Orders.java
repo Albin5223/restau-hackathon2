@@ -11,5 +11,9 @@ public interface Orders {
 
     Optional<Order> getOrderById(String id);
 
+    void updateSchedule(String orderId, String scheduleJson);
+
     List<Order> getActiveOrders();
+
+    void closeOrder(String orderId);
 }

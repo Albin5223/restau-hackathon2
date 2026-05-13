@@ -1,36 +1,32 @@
 package fr.ultime.restoptim.infra.database.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import lombok.*;
 
 import java.util.List;
 
 @Getter
-@RequiredArgsConstructor
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class TasksJsonDto {
 
-    @JsonProperty("etapes")
-    private final List<TaskJsonDto> tasks;
+    private List<TaskJsonDto> etapes;
 
     @Getter
-    @RequiredArgsConstructor
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class TaskJsonDto{
 
-        @JsonProperty("nom")
-        private final String nom;
+        private String nom;
 
-        @JsonProperty("kind")
-        private final String type;
+        private String kind;
 
-        @JsonProperty("ressource")
-        private final List<String> resources;
+        private List<String> ressource;
 
-        @JsonProperty("duree")
-        private final Integer duration;
+        private Integer duree;
 
-        @JsonProperty("deps")
-        private final List<Long> dependencies;
+        private List<Long> deps;
 
     }
 }

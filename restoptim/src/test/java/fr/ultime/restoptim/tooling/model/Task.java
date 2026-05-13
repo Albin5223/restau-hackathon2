@@ -1,6 +1,7 @@
 package fr.ultime.restoptim.tooling.model;
 
 import lombok.Builder;
+import lombok.Singular;
 
 import java.util.List;
 
@@ -8,7 +9,9 @@ import java.util.List;
 public record Task(Long id,
                    String name,
                    String kind,
+                   @Singular
                    List<String> resources,
                    int duration,
+                   @Singular
                    List<Integer> dependencies){
 }

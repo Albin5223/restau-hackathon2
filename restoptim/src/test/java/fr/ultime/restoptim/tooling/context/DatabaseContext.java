@@ -1,15 +1,15 @@
 package fr.ultime.restoptim.tooling.context;
 
 import fr.ultime.restoptim.tooling.model.Dish;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.util.List;
 
 @AllArgsConstructor
 @Setter
 @Getter
+@Builder(setterPrefix = "with")
 public class DatabaseContext {
+    @Singular
     private List<Dish> dishes;
 }

@@ -21,18 +21,21 @@ public class TasksMapper {
     public List<Task> toDomain(String jsonString) {
         List<Task> tasks = new ArrayList<>();
 
-        TasksJsonDto dtos = objectMapper.convertValue(jsonString, TasksJsonDto.class);
+        if(jsonString.startsWith("\""))
+            jsonString = objectMapper.readValue(jsonString, String.class);
 
-        for (int i = 0; i < dtos.getTasks().size(); i++) {
+        TasksJsonDto dtos = objectMapper.readValue(jsonString, TasksJsonDto.class);
+
+        for (int i = 0; i < dtos.getEtapes().size(); i++) {
             tasks.add(new Task(
                     TaskId.from((long) i),
-                    dtos.getTasks().get(i).getNom(),
-                    taskTypeMapper.toDomain(dtos.getTasks().get(i).getType()),
-                    dtos.getTasks().get(i).getResources().stream()
+                    dtos.getEtapes().get(i).getNom(),
+                    taskTypeMapper.toDomain(dtos.getEtapes().get(i).getKind()),
+                    dtos.getEtapes().get(i).getRessource().stream()
                             .map(ResourceType::from)
                             .toList(),
-                    dtos.getTasks().get(i).getDuration(),
-                    dtos.getTasks().get(i).getDependencies().stream()
+                    dtos.getEtapes().get(i).getDuree(),
+                    dtos.getEtapes().get(i).getDeps().stream()
                             .map(TaskId::from)
                             .toList()
             ));

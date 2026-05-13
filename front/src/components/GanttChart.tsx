@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ScheduledStep, ScheduledStepStatus } from "@/lib/types";
+import { formatDuration } from "@/lib/format";
 
 function kindColor(kind: string): string {
   if (kind === "cuisson") return "bg-amber-500/80 border-amber-600 text-white";
@@ -36,6 +37,19 @@ function statusBadge(status: ScheduledStepStatus): string {
   return "bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
 }
 
+// Strip the "__rN" suffix added when expanding multi-resource steps
+function getBaseStepId(id: string): string {
+  return id.replace(/__r\d+$/, "");
+}
+
+// Stable color per step — same palette, picked by hashing the base step ID
+const LINK_COLORS = ["#fde68a", "#f9a8d4", "#c4b5fd", "#5eead4", "#fdba74", "#bfdbfe"];
+function linkColor(baseId: string): string {
+  let h = 0;
+  for (const c of baseId) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+  return LINK_COLORS[h % LINK_COLORS.length];
+}
+
 type Props = {
   steps: ScheduledStep[];
 };
@@ -44,6 +58,7 @@ export function GanttChart({ steps }: Props) {
   const [filter, setFilter] = useState<string>("toutes");
   const [now, setNow] = useState(Date.now());
   const [hoveredOrderId, setHoveredOrderId] = useState<string | null>(null);
+  const [hoveredBaseStepId, setHoveredBaseStepId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -89,6 +104,18 @@ export function GanttChart({ steps }: Props) {
       if (!seen.has(s.resourceId)) seen.set(s.resourceId, s.resourceLabel);
     }
     return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
+  }, [steps]);
+
+  // Base step IDs that span more than one resource row
+  const multiResourceBaseIds = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of steps) {
+      const base = getBaseStepId(s.id);
+      counts.set(base, (counts.get(base) ?? 0) + 1);
+    }
+    return new Set(
+      [...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id),
+    );
   }, [steps]);
 
   const tickCount = Math.max(Math.floor(totalMs / 60_000 / 2), 2);
@@ -209,6 +236,12 @@ export function GanttChart({ steps }: Props) {
                         const ring = isSelected
                           ? "ring-2 ring-zinc-900 dark:ring-zinc-50"
                           : "";
+                        const baseId = getBaseStepId(step.id);
+                        const isMultiResource = multiResourceBaseIds.has(baseId);
+                        const isSiblingHovered =
+                          isMultiResource &&
+                          hoveredBaseStepId === baseId &&
+                          !isSelected;
                         return (
                           <div
                             key={step.id}
@@ -216,10 +249,24 @@ export function GanttChart({ steps }: Props) {
                             style={{
                               left: `${left}%`,
                               width: `${Math.max(width, 1.5)}%`,
+                              outline: isSiblingHovered
+                                ? "2px solid rgba(255,255,255,0.85)"
+                                : undefined,
+                              outlineOffset: "1px",
                             }}
-                            title={`T${step.tableNumber} · ${step.recipeName} · ${step.stepName} (${kindLabel(step.kind)})`}
-                            onMouseEnter={() => setHoveredOrderId(step.orderId)}
-                            onMouseLeave={() => setHoveredOrderId(null)}
+                            title={
+                              isMultiResource
+                                ? `T${step.tableNumber} · ${step.recipeName} · ${step.stepName} (${kindLabel(step.kind)}) — étape multi-ressource`
+                                : `T${step.tableNumber} · ${step.recipeName} · ${step.stepName} (${kindLabel(step.kind)})`
+                            }
+                            onMouseEnter={() => {
+                              setHoveredOrderId(step.orderId);
+                              setHoveredBaseStepId(baseId);
+                            }}
+                            onMouseLeave={() => {
+                              setHoveredOrderId(null);
+                              setHoveredBaseStepId(null);
+                            }}
                             onClick={() =>
                               setSelectedOrderId((prev) =>
                                 prev === step.orderId ? null : step.orderId,
@@ -232,6 +279,12 @@ export function GanttChart({ steps }: Props) {
                             <span className="truncate text-[9px] opacity-80">
                               T{step.tableNumber} · {step.recipeName}
                             </span>
+                            {isMultiResource && (
+                              <span
+                                className="absolute right-0.5 top-0.5 h-2 w-2 shrink-0 rounded-full border border-black/20"
+                                style={{ background: linkColor(baseId) }}
+                              />
+                            )}
                           </div>
                         );
                       })}
@@ -270,7 +323,7 @@ function CommandeDetailPanel({
   const tableNumber = sorted[0].tableNumber;
   const startAt = Math.min(...sorted.map((s) => s.startAt));
   const endAt = Math.max(...sorted.map((s) => s.endAt));
-  const durationMin = Math.round((endAt - startAt) / 60_000);
+  const durationSec = Math.round((endAt - startAt) / 1_000);
 
   const byDish = new Map<string, ScheduledStep[]>();
   for (const s of sorted) {
@@ -294,7 +347,7 @@ function CommandeDetailPanel({
             Table {tableNumber}
           </h3>
           <p className="mt-1 font-mono text-xs tabular-nums text-zinc-500">
-            {formatTime(startAt)} → {formatTime(endAt)} · {durationMin} min
+            {formatTime(startAt)} → {formatTime(endAt)} · {formatDuration(durationSec)}
           </p>
         </div>
         <button

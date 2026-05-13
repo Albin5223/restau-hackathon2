@@ -371,7 +371,7 @@ function RecipeGraphEditorInner({
         .map((depId) => indexMap.get(depId) ?? 0)
         .filter((x) => x > 0)
         .sort((a, b) => a - b);
-      return { nom: d.nom.trim(), kind: d.kind, ressource: d.ressource, duree: d.duree, deps };
+      return { nom: d.nom.trim(), kind: d.kind, ressource: d.ressource, duree: d.duree * 60, deps }; // user enters minutes, backend stores seconds
     });
 
     const errs = validateRecipe(name, etapes, existingNames);

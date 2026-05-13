@@ -12,4 +12,8 @@ public interface Commandes {
     Optional<Commande> getCommandeById(String id);
 
     List<Commande> getActiveCommandes();
+
+    void closeCommande(String commandeId);
+
+    void updateSchedule(String commandeId, String scheduleJson);
 }

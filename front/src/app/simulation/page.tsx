@@ -122,24 +122,24 @@ function AutoSimulation() {
 
 // ── Mode manuel ───────────────────────────────────────────────────────────────
 
-function toScheduledStep(task: BackendCommandeResult["scheduledTasks"][0]): ScheduledStep {
+function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): ScheduledStep[] {
   const now = Date.now();
   let status: ScheduledStepStatus = "a_venir";
   if (task.endAt < now) status = "termine";
   else if (task.startAt <= now) status = "en_cours";
-  return {
-    id: task.id,
+  return task.resourceNames.map((name, idx) => ({
+    id: idx === 0 ? task.id : `${task.id}__r${idx}`,
     orderId: task.commandeId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
     stepName: task.taskName,
     kind: task.kind,
-    resourceId: task.resourceName,
-    resourceLabel: task.resourceName,
+    resourceId: name,
+    resourceLabel: name,
     startAt: task.startAt,
     endAt: task.endAt,
     status,
-  };
+  }));
 }
 
 function ManualSimulation() {
@@ -206,7 +206,7 @@ function ManualSimulation() {
   }
 
   const ganttSteps: ScheduledStep[] = result
-    ? result.scheduledTasks.map(toScheduledStep)
+    ? result.scheduledTasks.flatMap(toScheduledSteps)
     : [];
 
   return (

@@ -64,7 +64,7 @@ export type BackendGanttTask = {
   dishName: string;
   taskName: string;
   kind: StepKind;
-  resourceName: string;
+  resourceNames: string[];
   startAt: number;
   endAt: number;
 };

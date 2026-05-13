@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useRecipes } from "@/components/RecipesProvider";
 import { RecipeGraphEditor } from "@/components/RecipeGraphEditor";
 import { allResources, computeSchedule, validateRecipe } from "@/lib/recipes";
+import { formatDuration } from "@/lib/format";
 import type { Recipe, RecipeStep, ResourceTypeDto } from "@/lib/types";
 import { api } from "@/lib/api";
 
@@ -136,7 +137,7 @@ export default function MenuPage() {
 // ─── RecipeCard ───────────────────────────────────────────────────────────────
 
 function RecipeCard({ recipe }: { recipe: Recipe }) {
-  const { totalMin } = useMemo(() => computeSchedule(recipe), [recipe]);
+  const { totalSec } = useMemo(() => computeSchedule(recipe), [recipe]);
   const resourceKinds = allResources(recipe);
 
   return (
@@ -151,7 +152,7 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
           </p>
         </div>
         <span className="rounded-md bg-zinc-100 px-2 py-1 font-mono text-xs tabular-nums text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-          {totalMin} min
+          {formatDuration(totalSec)}
         </span>
       </header>
 
@@ -169,7 +170,7 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
               ) : null}
             </span>
             <span className="font-mono tabular-nums text-zinc-600 dark:text-zinc-400">
-              {etape.duree} min
+              {formatDuration(etape.duree)}
             </span>
           </li>
         ))}
@@ -249,7 +250,7 @@ function RecipeForm({
       nom: s.nom.trim(),
       ressource: s.ressource,
       kind: s.kind,
-      duree: Number(s.duree),
+      duree: Number(s.duree) * 60, // user enters minutes, backend stores seconds
       deps: s.deps
         .map((u) => uidToIndex.get(u))
         .filter((n): n is number => typeof n === "number")

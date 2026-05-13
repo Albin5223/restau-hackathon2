@@ -12,24 +12,24 @@ const stepLabel: Record<string, string> = {
   dressage: "Dressage",
 };
 
-function toScheduledStep(task: BackendGanttTask): ScheduledStep {
+function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
   const now = Date.now();
   let status: ScheduledStepStatus = "a_venir";
   if (task.endAt < now) status = "termine";
   else if (task.startAt <= now) status = "en_cours";
-  return {
-    id: task.id,
+  return task.resourceNames.map((name, idx) => ({
+    id: idx === 0 ? task.id : `${task.id}__r${idx}`,
     orderId: task.commandeId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
     stepName: task.taskName,
     kind: task.kind,
-    resourceId: task.resourceName,
-    resourceLabel: task.resourceName,
+    resourceId: name,
+    resourceLabel: name,
     startAt: task.startAt,
     endAt: task.endAt,
     status,
-  };
+  }));
 }
 
 export default function CuisinePage() {
@@ -43,7 +43,7 @@ export default function CuisinePage() {
       try {
         const response = await api.cuisine.gantt();
         if (!mounted) return;
-        setSteps(response.tasks.map(toScheduledStep));
+        setSteps(response.tasks.flatMap(toScheduledSteps));
         setLastUpdate(new Date());
       } catch {
         // backend pas encore démarré ou commande en cours — on garde l'état précédent

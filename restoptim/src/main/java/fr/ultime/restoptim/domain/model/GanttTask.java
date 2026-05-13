@@ -1,5 +1,7 @@
 package fr.ultime.restoptim.domain.model;
 
+import java.util.List;
+
 public record GanttTask(
         String id,
         String commandeId,
@@ -7,7 +9,7 @@ public record GanttTask(
         String dishName,
         String taskName,
         String kind,
-        String resourceName,
+        List<String> resourceNames,
         long startAt,
         long endAt) {
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { GanttChart } from "@/components/GanttChart";
 import { api } from "@/lib/api";
+import type { AutoSimLog, AutoSimStatus } from "@/lib/api";
 import type {
   BackendCommandeResult,
   BackendTable,
@@ -14,37 +15,114 @@ import type {
 
 type SimMode = "auto" | "manuel";
 
-// ── Mode automatique (simulation fictive) ─────────────────────────────────────
+// ── Mode automatique ──────────────────────────────────────────────────────────
 
-type SimState = "idle" | "running" | "done";
+const LOG_TYPE_STYLES: Record<string, string> = {
+  arrival: "text-emerald-700 dark:text-emerald-400",
+  rejected: "text-red-600 dark:text-red-400",
+  order: "text-sky-700 dark:text-sky-400",
+  served: "text-amber-700 dark:text-amber-400",
+  left: "text-zinc-500 dark:text-zinc-400",
+  info: "text-zinc-600 dark:text-zinc-300",
+  error: "text-red-600 dark:text-red-400 font-semibold",
+};
 
-function AutoSimulation() {
-  const [state, setState] = useState<SimState>("idle");
-  const [progress, setProgress] = useState(0);
+const LOG_TYPE_LABELS: Record<string, string> = {
+  arrival: "Arrivée",
+  rejected: "Refus",
+  order: "Commande",
+  served: "Servi",
+  left: "Départ",
+  info: "Info",
+  error: "Erreur",
+};
+
+function LogLine({ log }: { log: AutoSimLog }) {
+  const time = new Date(log.timestamp).toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return (
+    <div className="flex gap-3 py-1 text-sm">
+      <span className="shrink-0 font-mono text-xs text-zinc-400">{time}</span>
+      <span className={`shrink-0 w-20 text-xs font-medium uppercase tracking-wide ${LOG_TYPE_STYLES[log.type] ?? ""}`}>
+        {LOG_TYPE_LABELS[log.type] ?? log.type}
+      </span>
+      <span className="text-zinc-700 dark:text-zinc-300">{log.message}</span>
+    </div>
+  );
+}
+
+function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) => void }) {
+  const [status, setStatus] = useState<AutoSimStatus>({ active: false, logs: [] });
   const [params, setParams] = useState({
-    durationMin: 180,
+    durationMin: 60,
     arrivalRatePerHour: 8,
     avgPartySize: 3,
+    speedMultiplier: 0.1,
   });
+  const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
-  function runSimulation() {
-    setState("running");
-    setProgress(0);
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + 5;
-        if (next >= 100) {
-          clearInterval(interval);
-          setState("done");
-          return 100;
+  // Polling du statut
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const s = await api.simulation.status();
+        if (!cancelled) {
+          setStatus(s);
+          onStatusChange(s.active);
         }
-        return next;
-      });
-    }, 80);
+      } catch {
+        // ignore network errors during polling
+      }
+    }
+
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [onStatusChange]);
+
+  // Auto-scroll des logs vers le bas
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [status.logs]);
+
+  async function handleStart() {
+    setStarting(true);
+    setError(null);
+    try {
+      await api.simulation.start(params);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur au démarrage.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function handleStop() {
+    setStopping(true);
+    setError(null);
+    try {
+      await api.simulation.stop();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur à l'arrêt.");
+    } finally {
+      setStopping(false);
+    }
   }
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
+      {/* Panneau de paramètres */}
       <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="mb-4 text-base font-semibold text-zinc-900 dark:text-zinc-50">
           Paramètres
@@ -55,18 +133,20 @@ function AutoSimulation() {
             suffix="min"
             value={params.durationMin}
             onChange={(v) => setParams((p) => ({ ...p, durationMin: v }))}
-            min={30}
+            min={5}
             max={480}
-            step={10}
+            step={5}
+            disabled={status.active}
           />
           <Field
-            label="Arrivées (λ)"
+            label="Taux d'arrivées (λ)"
             suffix="/ h"
             value={params.arrivalRatePerHour}
             onChange={(v) => setParams((p) => ({ ...p, arrivalRatePerHour: v }))}
             min={1}
             max={30}
             step={1}
+            disabled={status.active}
           />
           <Field
             label="Taille moyenne du groupe"
@@ -76,45 +156,87 @@ function AutoSimulation() {
             min={1}
             max={8}
             step={1}
+            disabled={status.active}
           />
+          <Field
+            label="Multiplicateur de vitesse"
+            suffix="×"
+            value={params.speedMultiplier}
+            onChange={(v) => setParams((p) => ({ ...p, speedMultiplier: v }))}
+            min={0.01}
+            max={3.0}
+            step={0.01}
+            disabled={status.active}
+          />
+          <p className="text-xs text-zinc-500">
+            {params.speedMultiplier < 1
+              ? `Durées réduites à ${(params.speedMultiplier * 100).toFixed(params.speedMultiplier < 0.1 ? 1 : 0)}% — simulation accélérée`
+              : params.speedMultiplier > 1
+              ? `Durées multipliées par ${params.speedMultiplier.toFixed(2)} — simulation ralentie`
+              : "Durées réelles"}
+          </p>
         </div>
 
-        <button
-          onClick={runSimulation}
-          disabled={state === "running"}
-          className="mt-6 w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          {state === "running" ? "Simulation en cours…" : "Lancer la simulation"}
-        </button>
+        {error ? (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            {error}
+          </p>
+        ) : null}
 
-        {state !== "idle" ? (
-          <div className="mt-4">
-            <div className="mb-1 flex justify-between text-xs text-zinc-500">
-              <span>Avancement</span>
-              <span className="font-mono tabular-nums">{progress}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900">
-              <div
-                className="h-full bg-zinc-900 transition-all duration-150 dark:bg-zinc-100"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+        <div className="mt-6 space-y-2">
+          {!status.active ? (
+            <button
+              onClick={handleStart}
+              disabled={starting}
+              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              {starting ? "Démarrage…" : "Lancer la simulation"}
+            </button>
+          ) : (
+            <button
+              onClick={handleStop}
+              disabled={stopping}
+              className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {stopping ? "Arrêt en cours…" : "Arrêter la simulation"}
+            </button>
+          )}
+        </div>
+
+        {status.active ? (
+          <div className="mt-4 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-500" />
+            Simulation en cours
           </div>
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
-        <p className="text-sm text-zinc-500">
-          La simulation automatique (processus de Poisson) sera connectée au
-          backend dans une prochaine itération. Utilisez le{" "}
-          <strong>mode manuel</strong> pour tester le planning en temps réel.
-        </p>
-        <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-zinc-600 dark:text-zinc-400">
-          <li>Arrivées de groupes selon un processus de Poisson de paramètre λ.</li>
-          <li>Taille de groupe : loi uniforme bornée autour de la moyenne.</li>
-          <li>Choix des plats : tirage uniforme dans le menu.</li>
-          <li>Refus si aucune table libre de la bonne taille.</li>
-        </ul>
+      {/* Journal des événements */}
+      <section className="flex flex-col rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="border-b border-zinc-100 px-6 py-4 dark:border-zinc-800">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+            Journal des événements
+          </h2>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            {status.logs.length === 0
+              ? "Lancez la simulation pour voir les événements."
+              : `${status.logs.length} événement(s) enregistré(s)`}
+          </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-3" style={{ maxHeight: "60vh" }}>
+          {status.logs.length === 0 ? (
+            <p className="py-8 text-center text-sm text-zinc-400">
+              Aucun événement pour l&apos;instant.
+            </p>
+          ) : (
+            <div className="divide-y divide-zinc-50 dark:divide-zinc-900">
+              {status.logs.map((log, i) => (
+                <LogLine key={i} log={log} />
+              ))}
+            </div>
+          )}
+          <div ref={logsEndRef} />
+        </div>
       </section>
     </div>
   );
@@ -159,7 +281,7 @@ function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): Sch
   }));
 }
 
-function ManualSimulation() {
+function ManualSimulation({ blocked }: { blocked: boolean }) {
   const [tables, setTables] = useState<BackendTable[]>([]);
   const [dishes, setDishes] = useState<Recipe[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
@@ -177,6 +299,19 @@ function ManualSimulation() {
       })
       .catch(console.error);
   }, []);
+
+  if (blocked) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center dark:border-amber-800 dark:bg-amber-950">
+        <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+          Simulation automatique active
+        </p>
+        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+          Les commandes manuelles sont désactivées pendant la simulation automatique. Arrêtez-la pour reprendre le mode manuel.
+        </p>
+      </div>
+    );
+  }
 
   const availableTables = tables.filter(
     (t) => t.status === "libre" || t.status === "commande_passee",
@@ -213,7 +348,6 @@ function ManualSimulation() {
     try {
       const res = await api.commandes.place(selectedTableId, dishIds, speedMultiplier);
       setResult(res);
-      // refresh tables to reflect new status
       setTables(await api.tables.list());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur lors de la commande.");
@@ -385,6 +519,7 @@ function ManualSimulation() {
 
 export default function SimulationPage() {
   const [mode, setMode] = useState<SimMode>("manuel");
+  const [isAutoActive, setIsAutoActive] = useState(false);
 
   return (
     <>
@@ -393,7 +528,7 @@ export default function SimulationPage() {
         subtitle={
           mode === "manuel"
             ? "Mode manuel — passez une commande et visualisez le planning"
-            : "Simulation à événements discrets en boucle fermée (générateur Poisson)"
+            : "Simulation à événements discrets en boucle fermée (processus de Poisson)"
         }
         actions={
           <div className="flex gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900">
@@ -408,6 +543,9 @@ export default function SimulationPage() {
                 }`}
               >
                 {m === "manuel" ? "Manuel" : "Automatique"}
+                {m === "auto" && isAutoActive ? (
+                  <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle" />
+                ) : null}
               </button>
             ))}
           </div>
@@ -415,7 +553,11 @@ export default function SimulationPage() {
       />
 
       <div className="p-8">
-        {mode === "manuel" ? <ManualSimulation /> : <AutoSimulation />}
+        {mode === "manuel" ? (
+          <ManualSimulation blocked={isAutoActive} />
+        ) : (
+          <AutoSimulation onStatusChange={setIsAutoActive} />
+        )}
       </div>
     </>
   );
@@ -429,6 +571,7 @@ function Field({
   min,
   max,
   step,
+  disabled,
 }: {
   label: string;
   suffix: string;
@@ -437,6 +580,7 @@ function Field({
   min: number;
   max: number;
   step: number;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -452,8 +596,9 @@ function Field({
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-zinc-900 dark:accent-zinc-100"
+        className="w-full accent-zinc-900 disabled:opacity-50 dark:accent-zinc-100"
       />
     </label>
   );

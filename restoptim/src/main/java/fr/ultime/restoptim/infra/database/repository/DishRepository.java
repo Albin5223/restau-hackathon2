@@ -8,6 +8,7 @@ import java.util.Optional;
 
 import fr.ultime.restoptim.domain.model.dish.CreateDishRequest;
 import fr.ultime.restoptim.domain.model.dish.DishId;
+import fr.ultime.restoptim.domain.model.task.Task;
 import fr.ultime.restoptim.infra.database.jdbc.JdbcDishes;
 import fr.ultime.restoptim.infra.database.mapper.TasksMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -49,11 +50,11 @@ public class DishRepository implements Dishes {
     }
 
     @Override
-    public Dish update(DishId id, String name, String tasksJson) {
+    public Dish update(DishId id, String name,List<Task> tasks) {
         jdbcTemplate.update(
                 "UPDATE recipe_documents SET name = ?, tasks = ? WHERE id = ?",
-                name, tasksJson, id.value());
-        return new Dish(id, name, parseTasks(tasksJson));
+                name, tasksMapper.toDto(tasks), id.value());
+        return new Dish(id, name, tasks);
     }
 
     @Override

@@ -8,4 +8,11 @@ public record CreateDishRequest(
         String name,
         List<Task> tasks
 ) {
+    public boolean hasName() {
+        return name != null && !name.isBlank();
+    }
+
+    public boolean hasTasks() {
+        return tasks != null && !tasks.isEmpty();
+    }
 }

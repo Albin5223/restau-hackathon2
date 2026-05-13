@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import fr.ultime.restoptim.domain.model.CommandeResult;
+import fr.ultime.restoptim.domain.service.AutoSimulationService;
 import fr.ultime.restoptim.domain.service.CommandeService;
 import lombok.RequiredArgsConstructor;
 
@@ -22,9 +23,13 @@ public class CommandeController {
 
     private static final Logger logger = LoggerFactory.getLogger(CommandeController.class);
     private final CommandeService commandeService;
+    private final AutoSimulationService autoSimulationService;
 
     @PostMapping
     public CommandeResult place(@RequestBody PlaceCommandeRequest body) {
+        if (autoSimulationService.isActive()) {
+            throw new ResponseStatusException(HttpStatus.LOCKED, "Simulation automatique en cours — commandes manuelles désactivées.");
+        }
         logger.info("[COMMANDE] Reçu request: tableId={}, dishIds={}, speedMultiplier={}", body.tableId(), body.dishIds(), body.speedMultiplier());
         if (body.dishIds() == null || body.dishIds().isEmpty()) {
             logger.warn("[COMMANDE] Validation échouée: dishIds null ou vide");

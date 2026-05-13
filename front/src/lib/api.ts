@@ -6,6 +6,17 @@ import type {
   ResourceTypeDto,
 } from "./types";
 
+export type AutoSimLog = {
+  timestamp: number;
+  type: "arrival" | "rejected" | "order" | "served" | "left" | "info" | "error";
+  message: string;
+};
+
+export type AutoSimStatus = {
+  active: boolean;
+  logs: AutoSimLog[];
+};
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -74,5 +85,19 @@ export const api = {
   },
   resources: {
     list: () => request<ResourceTypeDto[]>("/api/resources"),
+  },
+  simulation: {
+    status: () => request<AutoSimStatus>("/api/simulation/auto/status"),
+    start: (params: {
+      durationMin: number;
+      arrivalRatePerHour: number;
+      avgPartySize: number;
+      speedMultiplier: number;
+    }) =>
+      request<void>("/api/simulation/auto/start", {
+        method: "POST",
+        body: JSON.stringify(params),
+      }),
+    stop: () => request<void>("/api/simulation/auto/stop", { method: "POST" }),
   },
 };

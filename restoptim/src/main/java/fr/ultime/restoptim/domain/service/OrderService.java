@@ -60,8 +60,7 @@ public class OrderService {
     public OrderResult placeOrder(TableId tableId, List<DishId> dishIds, double speedMultiplier) {
         logger.info("[SERVICE] placeCommande: tableId={}, plats={}, multiplicateur={}", tableId, dishIds, speedMultiplier);
 
-        Table table = tables.getTableById(tableId)
-                .orElseThrow(() -> new IllegalArgumentException("Table introuvable : " + tableId));
+        Table table = tables.getTableById(tableId).orElseThrow(() -> new IllegalArgumentException("Table introuvable : " + tableId));
 
         if (table.status() != TableStatus.LIBRE && table.status() != TableStatus.COMMANDE_PASSEE) {
             throw new IllegalStateException("La table " + table.number() + " n'est pas disponible.");
@@ -99,7 +98,7 @@ public class OrderService {
 
         // Sauvegarder la nouvelle commande
         OrderSchedule newSchedule = schedules.get(schedules.size() - 1);
-        orders.save(new Order(orderId, tableId, now, dishIds, serialize(newSchedule)));
+        orders.save(new Order(orderId, tableId, now, dishIds, newSchedule));
         tables.save(new Table(table.id(), table.number(), table.seats(),
                 TableStatus.EN_PREPARATION, table.partySize(), orderId));
 
@@ -112,10 +111,9 @@ public class OrderService {
     public List<GanttTask> getAllActiveGanttTasks() {
         List<GanttTask> result = new ArrayList<>();
         for (Order commande : orders.getActiveOrders()) {
-            OrderSchedule schedule = deserialize(commande.scheduleJson());
             Table table = tables.getTableById(commande.tableId()).orElse(null);
             int tableNumber = table != null ? table.number() : 0;
-            result.addAll(toGanttTasks(commande.id(), tableNumber, schedule, commande.placedAt()));
+            result.addAll(toGanttTasks(commande.id(), tableNumber, commande.orderSchedule(), commande.placedAt()));
         }
         return result;
     }
@@ -135,7 +133,6 @@ public class OrderService {
             List<OccupiedInterval> runningIntervals) {
 
         for (Order order : activeOrders) {
-            OrderSchedule schedule = deserialize(order.scheduleJson());
             long baseMs = order.placedAt();
 
             // Charger les définitions de plats pour la structure de dépendances
@@ -143,14 +140,14 @@ public class OrderService {
 
             // Grouper les tâches planifiées par jobId, dans l'ordre d'apparition
             Map<JobId, List<ScheduledTask>> tasksByJob = new LinkedHashMap<>();
-            for (ScheduledTask st : schedule.scheduledTasks())
+            for (ScheduledTask st : order.orderSchedule().scheduledTasks())
                 tasksByJob.computeIfAbsent(st.jobId(), k -> new ArrayList<>()).add(st);
 
             // Classer chaque tâche : TERMINEE / EN_COURS / EN_ATTENTE
             Map<JobId, Map<TaskId, TaskStatus>> status = new HashMap<>();
             Map<JobId, Map<TaskId, Long>> endSec = new HashMap<>(); // fin relative à now (en secondes)
 
-            for (ScheduledTask st : schedule.scheduledTasks()) {
+            for (ScheduledTask st : order.orderSchedule().scheduledTasks()) {
                 long absStart = baseMs + st.startSecond() * 1000L;
                 long absEnd = baseMs + st.endSecond() * 1000L;
 
@@ -247,7 +244,6 @@ public class OrderService {
      * Les temps stockés en base sont relatifs à commande.placedAt.
      */
     private void mergeAndUpdateSchedule(Order order, OrderSchedule updatedSchedule, long nowMs) {
-        OrderSchedule existing = deserialize(order.scheduleJson());
         long baseMs = order.placedAt();
         long deltaSec = (nowMs - baseMs) / 1000L; // offset à ajouter aux temps du solveur
         String prefix = order.id().value() + "_";
@@ -262,7 +258,7 @@ public class OrderService {
 
         // Fusionner : garder les tâches terminées/en cours, remplacer les tâches en attente
         List<ScheduledTask> merged = new ArrayList<>();
-        for (ScheduledTask st : existing.scheduledTasks()) {
+        for (ScheduledTask st : order.orderSchedule().scheduledTasks()) {
             long absStart = baseMs + st.startSecond() * 1000L;
             boolean isPending = absStart > nowMs;
 
@@ -287,9 +283,9 @@ public class OrderService {
         long newServiceTimeSec = merged.stream()
                 .filter(t -> t.kind() == TaskType.PLATING)
                 .mapToLong(ScheduledTask::endSecond)
-                .max().orElse(existing.serviceTimeSecond());
+                .max().orElse(order.orderSchedule().serviceTimeSecond());
 
-        orders.updateSchedule(order.id(), serialize(new OrderSchedule(order.id(), newServiceTimeSec, merged)));
+        orders.updateSchedule(order.id(),new OrderSchedule(order.id(), newServiceTimeSec, merged));
         logger.debug("[SERVICE] Planning mis à jour pour commande={}, nouveau serviceTime={}s",
                 order.id(), newServiceTimeSec);
     }
@@ -340,7 +336,7 @@ public class OrderService {
                     ? task.assignedResourceNames()
                     : task.resources().stream().map(ResourceType::name).toList();
             result.add(new GanttTask(
-                    orderId.value() + "_" + task.jobId() + "_" + task.taskId(),
+                    orderId.value() + "_" + task.jobId().value() + "_" + task.taskId().value(),
                     orderId,
                     tableNumber,
                     task.dishName(),
@@ -367,14 +363,6 @@ public class OrderService {
             return objectMapper.writeValueAsString(schedule);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Impossible de sérialiser le planning", e);
-        }
-    }
-
-    private OrderSchedule deserialize(String json) {
-        try {
-            return objectMapper.readValue(json, OrderSchedule.class);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Planning stocké invalide", e);
         }
     }
 

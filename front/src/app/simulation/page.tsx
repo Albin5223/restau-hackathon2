@@ -253,7 +253,7 @@ function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): Sch
   if (task.resourceNames.length === 0) {
     return [{
       id: task.id,
-      orderId: task.commandeId,
+      orderId: task.orderId,
       tableNumber: task.tableNumber,
       recipeName: task.dishName,
       stepName: task.taskName,
@@ -268,7 +268,7 @@ function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): Sch
 
   return task.resourceNames.map((name, idx) => ({
     id: idx === 0 ? task.id : `${task.id}__r${idx}`,
-    orderId: task.commandeId,
+    orderId: task.orderId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
     stepName: task.taskName,
@@ -346,7 +346,7 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
     setError(null);
     setResult(null);
     try {
-      const res = await api.commandes.place(selectedTableId, dishIds, speedMultiplier);
+      const res = await api.orders.place(selectedTableId, dishIds, speedMultiplier);
       setResult(res);
       setTables(await api.tables.list());
     } catch (e) {
@@ -505,7 +505,7 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
                 })}
               </span>
               {" · "}
-              <span className="font-mono text-xs opacity-70">{result.commandeId}</span>
+              <span className="font-mono text-xs opacity-70">{result.orderId}</span>
             </p>
           </div>
           <GanttChart steps={ganttSteps} />

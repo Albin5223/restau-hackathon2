@@ -62,7 +62,7 @@ export default function Home() {
 
   const occupied = tables.filter((t) => t.status !== "libre").length;
   const inPrep = tables.filter((t) => t.status === "en_preparation").length;
-  const activeCommandeIds = new Set(ganttTasks.map((t) => t.commandeId));
+  const activeCommandeIds = new Set(ganttTasks.map((t) => t.orderId));
 
   const upcomingServes = ganttTasks
     .filter((t) => t.kind === "dressage" && t.endAt > Date.now())

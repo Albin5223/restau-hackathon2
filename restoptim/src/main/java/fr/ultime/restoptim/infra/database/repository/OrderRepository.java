@@ -3,10 +3,12 @@ package fr.ultime.restoptim.infra.database.repository;
 import java.util.List;
 import java.util.Optional;
 
+import fr.ultime.restoptim.domain.model.OrderSchedule;
 import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 import fr.ultime.restoptim.domain.model.table.TableId;
+import fr.ultime.restoptim.infra.database.mapper.OrderScheduleJsonMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,15 +35,16 @@ public class OrderRepository implements Orders {
     private static final String UPDATE_SCHEDULE =
             "UPDATE commandes SET schedule = ? WHERE id = ?";
 
+    private final OrderScheduleJsonMapper orderScheduleMapper;
     private final JdbcTemplate jdbcTemplate;
 
     @Override
     @Transactional
     public void save(Order order) {
         jdbcTemplate.update(INSERT_COMMANDE,
-                order.id(), order.tableId(), order.placedAt(), order.scheduleJson());
+                order.id().value(), order.tableId().value(), order.placedAt(), orderScheduleMapper.toDto(order.orderSchedule()));
         for (int i = 0; i < order.dishIds().size(); i++) {
-            jdbcTemplate.update(INSERT_ITEM, order.id(), order.dishIds().get(i), i);
+            jdbcTemplate.update(INSERT_ITEM, order.id().value(), order.dishIds().get(i).value(), i);
         }
     }
 
@@ -50,27 +53,27 @@ public class OrderRepository implements Orders {
         return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> {
             List<Long> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Long.class, orderId.value());
             return new Order(OrderId.from(rs.getString("id")), TableId.from(rs.getLong("table_id")),
-                    rs.getLong("placed_at"), dishIds.stream().map(DishId::from).toList(), rs.getString("schedule"));
+                    rs.getLong("placed_at"), dishIds.stream().map(DishId::from).toList(), orderScheduleMapper.toDomain(rs.getString("schedule")));
         }, orderId.value()).stream().findFirst();
     }
 
     @Override
-    public void closeOrder(OrderId  orderId) {
+    public void closeOrder(OrderId orderId) {
         jdbcTemplate.update(CLOSE_COMMANDE, orderId.value());
     }
 
     @Override
-    public void updateSchedule(OrderId orderId, String scheduleJson) {
-        jdbcTemplate.update(UPDATE_SCHEDULE, scheduleJson, orderId.value());
+    public void updateSchedule(OrderId orderId, OrderSchedule orderSchedule) {
+        jdbcTemplate.update(UPDATE_SCHEDULE, orderScheduleMapper.toDto(orderSchedule), orderId.value());
     }
 
     @Override
     public List<Order> getActiveOrders() {
         return jdbcTemplate.query(SELECT_ACTIVE, (rs, rowNum) -> {
-            OrderId orderId = OrderId.from( rs.getString("id"));
+            OrderId orderId = OrderId.from(rs.getString("id"));
             List<Long> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Long.class, orderId.value());
             return new Order(orderId, TableId.from(rs.getLong("table_id")),
-                    rs.getLong("placed_at"), dishIds.stream().map(DishId::from).toList(), rs.getString("schedule"));
+                    rs.getLong("placed_at"), dishIds.stream().map(DishId::from).toList(), orderScheduleMapper.toDomain(rs.getString("schedule")));
         });
     }
 }

@@ -21,10 +21,10 @@ const KINDS = [
 type DraftStep = {
   uid: string;
   nom: string;
-  ressource: string[];
+  resources: string[];
   kind: string;
-  duree: number;
-  deps: string[];
+  duration: number;
+  dependencies: string[];
 };
 
 let uidCounter = 0;
@@ -32,10 +32,10 @@ const nextUid = () => `s${++uidCounter}`;
 const emptyDraft = (): DraftStep => ({
   uid: nextUid(),
   nom: "",
-  ressource: [],
+  resources: [],
   kind: "preparation",
-  duree: 5,
-  deps: [],
+  duration: 5,
+  dependencies: [],
 });
 
 // Map backend kind strings (english) back to form kind strings (french)
@@ -45,15 +45,15 @@ function backendKindToForm(kind: string): string {
   return kind;
 }
 
-function recipeToDraftSteps(etapes: RecipeStep[]): DraftStep[] {
-  const uids = etapes.map(() => nextUid());
-  return etapes.map((step, i) => ({
+function recipeToDraftSteps(tasks: RecipeStep[]): DraftStep[] {
+  const uids = tasks.map(() => nextUid());
+  return tasks.map((step, i) => ({
     uid: uids[i],
     nom: step.nom,
-    ressource: step.ressource,
+    resources: step.resources,
     kind: backendKindToForm(step.kind ?? "other"),
-    duree: Math.max(1, Math.round(step.duree / 60)),
-    deps: step.deps
+    duration: Math.max(1, Math.round(step.duration / 60)),
+    dependencies: step.dependencies
       .map((d) => uids[d - 1])
       .filter((u): u is string => u !== undefined),
   }));
@@ -79,8 +79,8 @@ export default function MenuPage() {
     setShowForm(false);
   }
 
-  async function handleSubmit(name: string, etapes: RecipeStep[]) {
-    await addRecipe(name, etapes);
+  async function handleSubmit(name: string, tasks: RecipeStep[]) {
+    await addRecipe(name, tasks);
     setShowForm(false);
   }
 
@@ -92,8 +92,8 @@ export default function MenuPage() {
           recipe={editRecipe}
           existingNames={recipes.filter((r) => r.id !== editRecipe.id).map((r) => r.name)}
           resourceTypes={resourceTypes}
-          onSubmit={async (name, etapes) => {
-            await updateRecipe(editRecipe.id, name, etapes);
+          onSubmit={async (name, tasks) => {
+            await updateRecipe(editRecipe.id, name, tasks);
             setEditRecipe(null);
           }}
           onClose={() => setEditRecipe(null)}
@@ -257,22 +257,22 @@ function RecipeCard({
       </header>
 
       <ol className="mt-3 space-y-1 text-xs">
-        {recipe.tasks.etapes.map((etape, i) => (
+        {recipe.tasks.map((etape, i) => (
           <li key={i} className="flex items-center justify-between gap-2">
             <span className="text-zinc-700 dark:text-zinc-300">
               <span className="mr-1 font-mono text-zinc-400">#{i + 1}</span>
               {etape.nom}
-              {etape.ressource.length > 0 && (
-                <span className="ml-1 text-zinc-500">({etape.ressource.join(", ")})</span>
+              {etape.resources.length > 0 && (
+                <span className="ml-1 text-zinc-500">({etape.resources.join(", ")})</span>
               )}
-              {etape.deps.length > 0 ? (
+              {etape.dependencies.length > 0 ? (
                 <span className="ml-1 text-zinc-400">
-                  dép. {etape.deps.map((d) => `#${d}`).join(", ")}
+                  dép. {etape.dependencies.map((d) => `#${d}`).join(", ")}
                 </span>
               ) : null}
             </span>
             <span className="font-mono tabular-nums text-zinc-600 dark:text-zinc-400">
-              {formatDuration(etape.duree)}
+              {formatDuration(etape.duration)}
             </span>
           </li>
         ))}
@@ -483,7 +483,7 @@ function EditModal({
   onSubmit: (name: string, etapes: RecipeStep[]) => Promise<void>;
   onClose: () => void;
 }) {
-  const initialSteps = useMemo(() => recipeToDraftSteps(recipe.tasks.etapes), [recipe]);
+  const initialSteps = useMemo(() => recipeToDraftSteps(recipe.tasks), [recipe]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-12">
@@ -550,9 +550,9 @@ function RecipeForm({
         s.uid === stepUid
           ? {
               ...s,
-              ressource: s.ressource.includes(resource)
-                ? s.ressource.filter((r) => r !== resource)
-                : [...s.ressource, resource],
+              resources: s.resources.includes(resource)
+                ? s.resources.filter((r) => r !== resource)
+                : [...s.resources, resource],
             }
           : s,
       ),
@@ -567,7 +567,7 @@ function RecipeForm({
     setSteps((prev) =>
       prev
         .filter((s) => s.uid !== uid)
-        .map((s) => ({ ...s, deps: s.deps.filter((d) => d !== uid) })),
+        .map((s) => ({ ...s, deps: s.dependencies.filter((d) => d !== uid) })),
     );
   }
 
@@ -577,9 +577,9 @@ function RecipeForm({
         s.uid === stepUid
           ? {
               ...s,
-              deps: s.deps.includes(depUid)
-                ? s.deps.filter((d) => d !== depUid)
-                : [...s.deps, depUid],
+              dependencies: s.dependencies.includes(depUid)
+                ? s.dependencies.filter((d) => d !== depUid)
+                : [...s.dependencies, depUid],
             }
           : s,
       ),
@@ -591,10 +591,10 @@ function RecipeForm({
     const uidToIndex = new Map(steps.map((s, i) => [s.uid, i + 1]));
     const etapes: RecipeStep[] = steps.map((s) => ({
       nom: s.nom.trim(),
-      ressource: s.ressource,
+      resources: s.resources,
       kind: s.kind,
-      duree: Number(s.duree) * 60, // user enters minutes, backend stores seconds
-      deps: s.deps
+      duration: Number(s.duration) * 60, // user enters minutes, backend stores seconds
+      dependencies: s.dependencies
         .map((u) => uidToIndex.get(u))
         .filter((n): n is number => typeof n === "number")
         .sort((a, b) => a - b),
@@ -700,8 +700,8 @@ function RecipeForm({
                   <input
                     type="number"
                     min={1}
-                    value={step.duree}
-                    onChange={(e) => updateStep(step.uid, { duree: Number(e.target.value) })}
+                    value={step.duration}
+                    onChange={(e) => updateStep(step.uid, { duration: Number(e.target.value) })}
                     className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm tabular-nums dark:border-zinc-700 dark:bg-zinc-950"
                   />
                 </label>
@@ -716,7 +716,7 @@ function RecipeForm({
                     <span className="text-xs text-zinc-400">Chargement…</span>
                   ) : (
                     resourceTypes.map((r) => {
-                      const checked = step.ressource.includes(r.name);
+                      const checked = step.resources.includes(r.name);
                       return (
                         <button
                           key={r.name}
@@ -746,7 +746,7 @@ function RecipeForm({
                   </span>
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {previousSteps.map((p, pi) => {
-                      const checked = step.deps.includes(p.uid);
+                      const checked = step.dependencies.includes(p.uid);
                       return (
                         <label
                           key={p.uid}

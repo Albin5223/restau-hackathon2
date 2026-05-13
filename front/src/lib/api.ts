@@ -27,17 +27,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    let message = `Erreur ${res.status}`;
-    try {
-      const json = await res.json() as { message?: string };
-      if (json.message) message = json.message;
-    } catch {
-      const text = await res.text().catch(() => "");
-      if (text) message = text;
-    }
-    throw new Error(message);
+    const text = await res.text().catch(() => "");
+    throw new Error(`API ${path} → ${res.status}${text ? ": " + text : ""}`);
   }
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {
@@ -99,9 +93,9 @@ export const api = {
     serve: (id: number) =>
       request<BackendTable>(`/api/tables/${id}/serve`, { method: "POST" }),
   },
-  commandes: {
+  orders: {
     place: (tableId: number, dishIds: number[], speedMultiplier?: number) =>
-      request<BackendCommandeResult>("/api/commandes", {
+      request<BackendCommandeResult>("/api/orders", {
         method: "POST",
         body: JSON.stringify({ tableId, dishIds, speedMultiplier }),
       }),

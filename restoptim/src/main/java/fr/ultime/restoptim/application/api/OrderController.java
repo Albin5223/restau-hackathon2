@@ -2,6 +2,8 @@ package fr.ultime.restoptim.application.api;
 
 import java.util.List;
 
+import fr.ultime.restoptim.application.dto.OrderResultDto;
+import fr.ultime.restoptim.application.mapper.OrderResultMapper;
 import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.table.TableId;
 import org.slf4j.Logger;
@@ -26,8 +28,10 @@ public class OrderController {
     private static final Logger logger = LoggerFactory.getLogger(OrderController.class);
     private final OrderService orderService;
     private final AutoSimulationService autoSimulationService;
+    private final OrderResultMapper orderResultMapper;
+
     @PostMapping
-    public OrderResult place(@RequestBody PlaceOrderRequest body) {
+    public OrderResultDto place(@RequestBody PlaceOrderRequest body) {
         if (autoSimulationService.isActive()) {
             throw new ResponseStatusException(HttpStatus.LOCKED, "Simulation automatique en cours — commandes manuelles désactivées.");
         }
@@ -49,7 +53,7 @@ public class OrderController {
                     multiplier
             );
             logger.info("[ORDER] Succès: orderId={}, serviceTime={}", result.orderId(), result.serviceTimeAt());
-            return result;
+            return orderResultMapper.toDto(result);
         } catch (IllegalArgumentException e) {
             logger.error("[ORDER] Erreur BAD_REQUEST: tableId={}, message={}", body.tableId(), e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());

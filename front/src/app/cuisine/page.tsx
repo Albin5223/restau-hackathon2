@@ -22,7 +22,7 @@ function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
   if (task.resourceNames.length === 0) {
     return [{
       id: task.id,
-      orderId: task.commandeId,
+      orderId: task.orderId,
       tableNumber: task.tableNumber,
       recipeName: task.dishName,
       stepName: task.taskName,
@@ -37,7 +37,7 @@ function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
 
   return task.resourceNames.map((name, idx) => ({
     id: idx === 0 ? task.id : `${task.id}__r${idx}`,
-    orderId: task.commandeId,
+    orderId: task.orderId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
     stepName: task.taskName,

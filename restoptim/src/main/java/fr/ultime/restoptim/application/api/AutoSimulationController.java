@@ -1,4 +1,4 @@
-package fr.ultime.restoptim.api;
+package fr.ultime.restoptim.application.api;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;

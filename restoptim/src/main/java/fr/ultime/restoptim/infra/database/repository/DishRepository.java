@@ -56,6 +56,19 @@ public class DishRepository implements Dishes {
     }
 
     @Override
+    public Dish update(int id, String name, String tasksJson) {
+        jdbcTemplate.update(
+                "UPDATE recipe_documents SET name = ?, tasks = ? WHERE id = ?",
+                name, tasksJson, id);
+        return new Dish(id, name, parseTasks(tasksJson));
+    }
+
+    @Override
+    public void delete(int id) {
+        jdbcTemplate.update("DELETE FROM recipe_documents WHERE id = ?", id);
+    }
+
+    @Override
     public Optional<Dish> getDishById(int id) {
         return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> mapRowToDish(rs), id)
                 .stream()

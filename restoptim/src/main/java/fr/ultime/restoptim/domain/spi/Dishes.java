@@ -12,4 +12,8 @@ public interface Dishes {
     Optional<Dish> getDishById(int id);
 
     Dish save(String name, String tasksJson);
+
+    Dish update(int id, String name, String tasksJson);
+
+    void delete(int id);
 }

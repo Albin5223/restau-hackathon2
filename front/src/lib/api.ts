@@ -16,8 +16,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`API ${path} → ${res.status}${text ? ": " + text : ""}`);
+    let message = `Erreur ${res.status}`;
+    try {
+      const json = await res.json() as { message?: string };
+      if (json.message) message = json.message;
+    } catch {
+      const text = await res.text().catch(() => "");
+      if (text) message = text;
+    }
+    throw new Error(message);
   }
   return res.json() as Promise<T>;
 }
@@ -30,6 +37,25 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ name, tasks }),
       }),
+    update: (id: number, name: string, tasks: Recipe["tasks"]) =>
+      request<Recipe>(`/api/dishes/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, tasks }),
+      }),
+    delete: async (id: number) => {
+      const res = await fetch(`${API}/api/dishes/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        let message = `Erreur ${res.status}`;
+        try {
+          const json = await res.json() as { message?: string };
+          if (json.message) message = json.message;
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+    },
     importBatch: async (dishList: Array<{ name: string; tasks: Recipe["tasks"] }>) => {
       const res = await fetch(`${API}/api/dishes/import`, {
         method: "POST",

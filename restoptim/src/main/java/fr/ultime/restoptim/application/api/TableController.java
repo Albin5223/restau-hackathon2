@@ -2,6 +2,8 @@ package fr.ultime.restoptim.application.api;
 
 import java.util.List;
 
+import fr.ultime.restoptim.domain.spi.Orders;
+import fr.ultime.restoptim.domain.service.AutoSimulationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,7 +16,6 @@ import org.springframework.web.server.ResponseStatusException;
 import fr.ultime.restoptim.domain.model.Table;
 import fr.ultime.restoptim.domain.model.TableStatus;
 import fr.ultime.restoptim.domain.service.AutoSimulationService;
-import fr.ultime.restoptim.domain.spi.Commandes;
 import fr.ultime.restoptim.domain.spi.Tables;
 import lombok.RequiredArgsConstructor;
 
@@ -24,7 +25,7 @@ import lombok.RequiredArgsConstructor;
 public class TableController {
 
     private final Tables tables;
-    private final Commandes commandes;
+    private final Orders orders;
     private final AutoSimulationService autoSimulationService;
 
     private void checkNotInAutoSim() {
@@ -67,8 +68,8 @@ public class TableController {
         checkNotInAutoSim();
         Table table = tables.getTableById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
-        if (table.commandeId() != null) {
-            commandes.closeCommande(table.commandeId());
+        if (table.orderId() != null) {
+            orders.closeOrder(table.orderId());
         }
         Table updated = new Table(table.id(), table.number(), table.seats(), TableStatus.LIBRE, null, null);
         tables.save(updated);

@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import fr.ultime.restoptim.domain.model.*;
+import fr.ultime.restoptim.domain.spi.Orders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -14,21 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import fr.ultime.restoptim.domain.model.Commande;
-import fr.ultime.restoptim.domain.model.CommandeResult;
-import fr.ultime.restoptim.domain.model.Dish;
-import fr.ultime.restoptim.domain.model.DishJob;
-import fr.ultime.restoptim.domain.model.GanttTask;
-import fr.ultime.restoptim.domain.model.OccupiedInterval;
-import fr.ultime.restoptim.domain.model.OrderRequest;
-import fr.ultime.restoptim.domain.model.OrderSchedule;
-import fr.ultime.restoptim.domain.model.ResourceType;
-import fr.ultime.restoptim.domain.model.ScheduledTask;
-import fr.ultime.restoptim.domain.model.Table;
-import fr.ultime.restoptim.domain.model.TableStatus;
-import fr.ultime.restoptim.domain.model.Task;
-import fr.ultime.restoptim.domain.model.TaskKind;
-import fr.ultime.restoptim.domain.spi.Commandes;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import fr.ultime.restoptim.domain.spi.Tables;
 import fr.ultime.restoptim.scheduler.KitchenScheduler;
@@ -36,12 +23,12 @@ import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-public class CommandeService {
+public class OrderService {
 
-    private static final Logger logger = LoggerFactory.getLogger(CommandeService.class);
+    private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
     private final Tables tables;
     private final Dishes dishes;
-    private final Commandes commandes;
+    private final Orders orders;
     private final KitchenScheduler scheduler;
     private final ObjectMapper objectMapper;
 
@@ -55,7 +42,7 @@ public class CommandeService {
      * 3. Les plannings des commandes existantes sont mis à jour en base.
      */
     @Transactional
-    public CommandeResult placeCommande(int tableId, List<Integer> dishIds, double speedMultiplier) {
+    public OrderResult placeOrder(int tableId, List<Integer> dishIds, double speedMultiplier) {
         logger.info("[SERVICE] placeCommande: tableId={}, plats={}, multiplicateur={}", tableId, dishIds, speedMultiplier);
 
         Table table = tables.getTableById(tableId)
@@ -73,14 +60,14 @@ public class CommandeService {
         OrderRequest newOrder = new OrderRequest(commandeId, newJobs);
 
         // Analyser les commandes actives : séparer tâches en cours (verrouillées) et en attente (re-planifiables)
-        List<Commande> activeCommandes = commandes.getActiveCommandes();
+        List<Order> activeOrders = orders.getActiveOrders();
         List<OrderRequest> pendingOrders = new ArrayList<>();
         Map<String, Long> taskMinStarts = new HashMap<>();
         List<OccupiedInterval> runningIntervals = new ArrayList<>();
-        buildPendingOrdersAndIntervals(activeCommandes, now, pendingOrders, taskMinStarts, runningIntervals);
+        buildPendingOrdersAndIntervals(activeOrders, now, pendingOrders, taskMinStarts, runningIntervals);
 
         logger.info("[SERVICE] {} commandes actives → {} avec tâches en attente, {} intervalles en cours",
-                activeCommandes.size(), pendingOrders.size(), runningIntervals.size());
+                activeOrders.size(), pendingOrders.size(), runningIntervals.size());
 
         // Planifier tout ensemble : commandes existantes (en attente) + nouvelle commande
         List<OrderRequest> allOrders = new ArrayList<>(pendingOrders);
@@ -89,31 +76,31 @@ public class CommandeService {
 
         // Mettre à jour les plannings des commandes existantes re-planifiées
         for (int i = 0; i < pendingOrders.size(); i++) {
-            Commande commande = findCommande(activeCommandes, pendingOrders.get(i).orderId());
-            if (commande != null) {
-                mergeAndUpdateSchedule(commande, schedules.get(i), now);
+            Order order = findOrder(activeOrders, pendingOrders.get(i).orderId());
+            if (order != null) {
+                mergeAndUpdateSchedule(order, schedules.get(i), now);
             }
         }
 
         // Sauvegarder la nouvelle commande
         OrderSchedule newSchedule = schedules.get(schedules.size() - 1);
-        commandes.save(new Commande(commandeId, tableId, now, dishIds, serialize(newSchedule)));
+        orders.save(new Order(commandeId, tableId, now, dishIds, serialize(newSchedule)));
         tables.save(new Table(table.id(), table.number(), table.seats(),
                 TableStatus.EN_PREPARATION, table.partySize(), commandeId));
 
         long serviceTimeAt = now + newSchedule.serviceTimeSecond() * 1_000L;
         List<GanttTask> ganttTasks = toGanttTasks(commandeId, table.number(), newSchedule, now);
         logger.info("[SERVICE] Commande planifiée : id={}, serviceTimeAt={}ms", commandeId, serviceTimeAt);
-        return new CommandeResult(commandeId, table.number(), serviceTimeAt, ganttTasks);
+        return new OrderResult(commandeId, table.number(), serviceTimeAt, ganttTasks);
     }
 
     public List<GanttTask> getAllActiveGanttTasks() {
         List<GanttTask> result = new ArrayList<>();
-        for (Commande commande : commandes.getActiveCommandes()) {
-            OrderSchedule schedule = deserialize(commande.scheduleJson());
-            Table table = tables.getTableById(commande.tableId()).orElse(null);
+        for (Order order : orders.getActiveOrders()) {
+            OrderSchedule schedule = deserialize(order.scheduleJson());
+            Table table = tables.getTableById(order.tableId()).orElse(null);
             int tableNumber = table != null ? table.number() : 0;
-            result.addAll(toGanttTasks(commande.id(), tableNumber, schedule, commande.placedAt()));
+            result.addAll(toGanttTasks(order.id(), tableNumber, schedule, order.placedAt()));
         }
         return result;
     }
@@ -127,17 +114,17 @@ public class CommandeService {
      * - runningIntervals : intervalles de ressources verrouillés pour les tâches actuellement en cours.
      */
     private void buildPendingOrdersAndIntervals(
-            List<Commande> activeCommandes, long nowMs,
+            List<Order> activeOrders, long nowMs,
             List<OrderRequest> pendingOrders,
             Map<String, Long> taskMinStarts,
             List<OccupiedInterval> runningIntervals) {
 
-        for (Commande commande : activeCommandes) {
-            OrderSchedule schedule = deserialize(commande.scheduleJson());
-            long baseMs = commande.placedAt();
+        for (Order order : activeOrders) {
+            OrderSchedule schedule = deserialize(order.scheduleJson());
+            long baseMs = order.placedAt();
 
             // Charger les définitions de plats pour la structure de dépendances
-            Map<Integer, Dish> dishById = loadDishes(commande.dishIds());
+            Map<Integer, Dish> dishById = loadDishes(order.dishIds());
 
             // Grouper les tâches planifiées par jobId, dans l'ordre d'apparition
             Map<String, List<ScheduledTask>> tasksByJob = new LinkedHashMap<>();
@@ -219,20 +206,20 @@ public class CommandeService {
                             st.resources(), duration, pendingDeps));
 
                     if (minStart > 0L) {
-                        String prefixedJobId = commande.id() + "_" + origJobId;
+                        String prefixedJobId = order.id() + "_" + origJobId;
                         taskMinStarts.put(prefixedJobId + "#" + st.taskId(), minStart);
                     }
                 }
 
                 if (!pendingTaskList.isEmpty()) {
-                    String prefixedJobId = commande.id() + "_" + origJobId;
+                    String prefixedJobId = order.id() + "_" + origJobId;
                     Dish pendingDish = new Dish(dishId, jobTasks.get(0).dishName(), pendingTaskList);
                     pendingJobs.add(new DishJob(prefixedJobId, pendingDish));
                 }
             }
 
             if (hasAnyPending && !pendingJobs.isEmpty()) {
-                pendingOrders.add(new OrderRequest(commande.id(), pendingJobs));
+                pendingOrders.add(new OrderRequest(order.id(), pendingJobs));
             }
         }
     }
@@ -244,11 +231,11 @@ public class CommandeService {
      * Les temps du solveur sont relatifs à now (t=0 = maintenant).
      * Les temps stockés en base sont relatifs à commande.placedAt.
      */
-    private void mergeAndUpdateSchedule(Commande commande, OrderSchedule updatedSchedule, long nowMs) {
-        OrderSchedule existing = deserialize(commande.scheduleJson());
-        long baseMs = commande.placedAt();
+    private void mergeAndUpdateSchedule(Order order, OrderSchedule updatedSchedule, long nowMs) {
+        OrderSchedule existing = deserialize(order.scheduleJson());
+        long baseMs = order.placedAt();
         long deltaSec = (nowMs - baseMs) / 1000L; // offset à ajouter aux temps du solveur
-        String prefix = commande.id() + "_";
+        String prefix = order.id() + "_";
 
         // Indexer les tâches mises à jour par (jobId_original, taskId)
         Map<String, ScheduledTask> updatedByKey = new HashMap<>();
@@ -287,9 +274,9 @@ public class CommandeService {
                 .mapToLong(ScheduledTask::endSecond)
                 .max().orElse(existing.serviceTimeSecond());
 
-        commandes.updateSchedule(commande.id(), serialize(new OrderSchedule(commande.id(), newServiceTimeSec, merged)));
+        orders.updateSchedule(order.id(), serialize(new OrderSchedule(order.id(), newServiceTimeSec, merged)));
         logger.debug("[SERVICE] Planning mis à jour pour commande={}, nouveau serviceTime={}s",
-                commande.id(), newServiceTimeSec);
+                order.id(), newServiceTimeSec);
     }
 
     // ─── Méthodes utilitaires ─────────────────────────────────────────────────
@@ -324,7 +311,7 @@ public class CommandeService {
         return result;
     }
 
-    private Commande findCommande(List<Commande> list, String id) {
+    private Order findOrder(List<Order> list, String id) {
         return list.stream().filter(c -> c.id().equals(id)).findFirst().orElse(null);
     }
 

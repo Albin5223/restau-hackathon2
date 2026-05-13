@@ -3,17 +3,17 @@ package fr.ultime.restoptim.infra.database.repository;
 import java.util.List;
 import java.util.Optional;
 
+import fr.ultime.restoptim.domain.model.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import fr.ultime.restoptim.domain.model.Commande;
-import fr.ultime.restoptim.domain.spi.Commandes;
+import fr.ultime.restoptim.domain.spi.Orders;
 import lombok.RequiredArgsConstructor;
 
 @Repository
 @RequiredArgsConstructor
-public class CommandeRepository implements Commandes {
+public class OrderRepository implements Orders {
 
     private static final String INSERT_COMMANDE =
             "INSERT INTO commandes (id, table_id, placed_at, schedule, status) VALUES (?, ?, ?, ?, 'EN_PREPARATION')";
@@ -34,39 +34,39 @@ public class CommandeRepository implements Commandes {
 
     @Override
     @Transactional
-    public void save(Commande commande) {
+    public void save(Order order) {
         jdbcTemplate.update(INSERT_COMMANDE,
-                commande.id(), commande.tableId(), commande.placedAt(), commande.scheduleJson());
-        for (int i = 0; i < commande.dishIds().size(); i++) {
-            jdbcTemplate.update(INSERT_ITEM, commande.id(), commande.dishIds().get(i), i);
+                order.id(), order.tableId(), order.placedAt(), order.scheduleJson());
+        for (int i = 0; i < order.dishIds().size(); i++) {
+            jdbcTemplate.update(INSERT_ITEM, order.id(), order.dishIds().get(i), i);
         }
     }
 
     @Override
-    public Optional<Commande> getCommandeById(String id) {
+    public Optional<Order> getOrderById(String id) {
         return jdbcTemplate.query(SELECT_BY_ID, (rs, rowNum) -> {
             List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, id);
-            return new Commande(rs.getString("id"), rs.getInt("table_id"),
+            return new Order(rs.getString("id"), rs.getInt("table_id"),
                     rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
         }, id).stream().findFirst();
     }
 
     @Override
-    public void closeCommande(String commandeId) {
-        jdbcTemplate.update(CLOSE_COMMANDE, commandeId);
+    public void closeOrder(String  orderId) {
+        jdbcTemplate.update(CLOSE_COMMANDE, orderId);
     }
 
     @Override
-    public void updateSchedule(String commandeId, String scheduleJson) {
-        jdbcTemplate.update(UPDATE_SCHEDULE, scheduleJson, commandeId);
+    public void updateSchedule(String orderId, String scheduleJson) {
+        jdbcTemplate.update(UPDATE_SCHEDULE, scheduleJson, orderId);
     }
 
     @Override
-    public List<Commande> getActiveCommandes() {
+    public List<Order> getActiveOrders() {
         return jdbcTemplate.query(SELECT_ACTIVE, (rs, rowNum) -> {
             String cid = rs.getString("id");
             List<Integer> dishIds = jdbcTemplate.queryForList(SELECT_DISH_IDS, Integer.class, cid);
-            return new Commande(cid, rs.getInt("table_id"),
+            return new Order(cid, rs.getInt("table_id"),
                     rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
         });
     }

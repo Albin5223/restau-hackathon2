@@ -5,12 +5,14 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -58,8 +60,49 @@ public class DishController {
         try {
             String tasksJson = objectMapper.writeValueAsString(body.tasks());
             return toResponse(dishes.save(body.name().trim(), tasksJson));
+        } catch (DataAccessException e) {
+            if (isUniqueViolation(e))
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Un plat avec le nom \"" + body.name().trim() + "\" existe déjà.");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Erreur de base de données.");
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Format de tâches invalide.");
+        }
+    }
+
+    @PutMapping("/{id}")
+    public DishResponse update(@PathVariable int id, @RequestBody CreateDishRequest body) {
+        if (body.name() == null || body.name().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le nom du plat est requis.");
+        }
+        if (body.tasks() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Les tâches du plat sont requises.");
+        }
+        dishes.getDishById(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + id));
+        try {
+            String tasksJson = objectMapper.writeValueAsString(body.tasks());
+            return toResponse(dishes.update(id, body.name().trim(), tasksJson));
+        } catch (DataAccessException e) {
+            if (isUniqueViolation(e))
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Un plat avec le nom \"" + body.name().trim() + "\" existe déjà.");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Erreur de base de données.");
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Format de tâches invalide.");
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable int id) {
+        dishes.getDishById(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + id));
+        try {
+            dishes.delete(id);
+        } catch (DataAccessException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ce plat est utilisé dans une commande active et ne peut pas être supprimé.");
         }
     }
 
@@ -86,10 +129,15 @@ public class DishController {
             try {
                 String tasksJson = objectMapper.writeValueAsString(req.tasks());
                 results.add(toResponse(dishes.save(req.name().trim(), tasksJson)));
-            } catch (DataIntegrityViolationException e) {
-                logger.warn("Plat #{} : nom en doublon - {}", i + 1, req.name());
+            } catch (DataAccessException e) {
+                if (isUniqueViolation(e)){
+                    logger.warn("Plat #{} : violation de contrainte unique - {}", i + 1, req.name());
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Un plat avec le nom \"" + req.name().trim() + "\" existe déjà.");
+                }
+                logger.warn("Plat #{} : erreur de base de données - {} : {}", i + 1, req.name(), e.getMessage());
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Un plat avec le nom \"" + req.name().trim() + "\" existe déjà.");
+                        "Erreur de base de données pour \"" + req.name() + "\".");
             } catch (JsonProcessingException e) {
                 logger.warn("Plat #{} : format de tâches invalide - {}", i + 1, req.name());
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -103,6 +151,13 @@ public class DishController {
             }
         }
         return results;
+    }
+
+    /** SQLite peut lever UncategorizedSQLException au lieu de DataIntegrityViolationException
+     *  pour les violations UNIQUE — on détecte via le message. */
+    private static boolean isUniqueViolation(Exception e) {
+        String msg = e.getMessage() != null ? e.getMessage().toUpperCase() : "";
+        return msg.contains("UNIQUE") || msg.contains("SQLITE_CONSTRAINT");
     }
 
     private DishResponse toResponse(Dish dish) {

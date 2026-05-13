@@ -38,14 +38,36 @@ const emptyDraft = (): DraftStep => ({
   deps: [],
 });
 
+// Map backend kind strings (english) back to form kind strings (french)
+function backendKindToForm(kind: string): string {
+  if (kind === "cooking") return "cuisson";
+  if (kind === "plating") return "dressage";
+  return kind;
+}
+
+function recipeToDraftSteps(etapes: RecipeStep[]): DraftStep[] {
+  const uids = etapes.map(() => nextUid());
+  return etapes.map((step, i) => ({
+    uid: uids[i],
+    nom: step.nom,
+    ressource: step.ressource,
+    kind: backendKindToForm(step.kind ?? "other"),
+    duree: Math.max(1, Math.round(step.duree / 60)),
+    deps: step.deps
+      .map((d) => uids[d - 1])
+      .filter((u): u is string => u !== undefined),
+  }));
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type CreationMode = "simple" | "graph";
 
 export default function MenuPage() {
-  const { recipes, addRecipe } = useRecipes();
+  const { recipes, addRecipe, updateRecipe, deleteRecipe } = useRecipes();
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [editRecipe, setEditRecipe] = useState<Recipe | null>(null);
   const [mode, setMode] = useState<CreationMode>("simple");
   const [resourceTypes, setResourceTypes] = useState<ResourceTypeDto[]>([]);
 
@@ -65,6 +87,18 @@ export default function MenuPage() {
   return (
     <>
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
+      {editRecipe && (
+        <EditModal
+          recipe={editRecipe}
+          existingNames={recipes.filter((r) => r.id !== editRecipe.id).map((r) => r.name)}
+          resourceTypes={resourceTypes}
+          onSubmit={async (name, etapes) => {
+            await updateRecipe(editRecipe.id, name, etapes);
+            setEditRecipe(null);
+          }}
+          onClose={() => setEditRecipe(null)}
+        />
+      )}
       <PageHeader
         title="Menu"
         subtitle={`${recipes.length} plats — étapes, dépendances et ressources`}
@@ -135,7 +169,12 @@ export default function MenuPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {recipes.map((recipe) => (
-              <RecipeCard key={recipe.id} recipe={recipe} />
+              <RecipeCard
+                key={recipe.id}
+                recipe={recipe}
+                onEdit={() => setEditRecipe(recipe)}
+                onDelete={() => deleteRecipe(recipe.id)}
+              />
             ))}
           </div>
         )}
@@ -146,14 +185,37 @@ export default function MenuPage() {
 
 // ─── RecipeCard ───────────────────────────────────────────────────────────────
 
-function RecipeCard({ recipe }: { recipe: Recipe }) {
+function RecipeCard({
+  recipe,
+  onEdit,
+  onDelete,
+}: {
+  recipe: Recipe;
+  onEdit: () => void;
+  onDelete: () => Promise<void>;
+}) {
   const { totalSec } = useMemo(() => computeSchedule(recipe), [recipe]);
   const resourceKinds = allResources(recipe);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Erreur lors de la suppression.");
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
 
   return (
-    <article className="flex flex-col rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+    <article className="group flex flex-col rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
       <header className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
             {recipe.name}
           </h2>
@@ -161,9 +223,37 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
             {resourceKinds.join(" · ")}
           </p>
         </div>
-        <span className="rounded-md bg-zinc-100 px-2 py-1 font-mono text-xs tabular-nums text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-          {formatDuration(totalSec)}
-        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="rounded-md bg-zinc-100 px-2 py-1 font-mono text-xs tabular-nums text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+            {formatDuration(totalSec)}
+          </span>
+          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={onEdit}
+              title="Modifier"
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setConfirmDelete(true); setDeleteError(null); }}
+              title="Supprimer"
+              className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </header>
 
       <ol className="mt-3 space-y-1 text-xs">
@@ -172,7 +262,9 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
             <span className="text-zinc-700 dark:text-zinc-300">
               <span className="mr-1 font-mono text-zinc-400">#{i + 1}</span>
               {etape.nom}
-              <span className="ml-1 text-zinc-500">({etape.ressource.join(", ")})</span>
+              {etape.ressource.length > 0 && (
+                <span className="ml-1 text-zinc-500">({etape.ressource.join(", ")})</span>
+              )}
               {etape.deps.length > 0 ? (
                 <span className="ml-1 text-zinc-400">
                   dép. {etape.deps.map((d) => `#${d}`).join(", ")}
@@ -185,6 +277,37 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
           </li>
         ))}
       </ol>
+
+      {deleteError && (
+        <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          {deleteError}
+        </p>
+      )}
+
+      {confirmDelete && (
+        <div className="mt-3 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900 dark:bg-red-950">
+          <span className="text-xs text-red-800 dark:text-red-300">
+            Supprimer ce plat ?
+          </span>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="text-xs text-zinc-600 hover:underline dark:text-zinc-400"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-xs font-semibold text-red-700 hover:underline disabled:opacity-50 dark:text-red-400"
+            >
+              {deleting ? "Suppression…" : "Confirmer"}
+            </button>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -345,6 +468,54 @@ function ImportModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── EditModal ────────────────────────────────────────────────────────────────
+
+function EditModal({
+  recipe,
+  existingNames,
+  resourceTypes,
+  onSubmit,
+  onClose,
+}: {
+  recipe: Recipe;
+  existingNames: string[];
+  resourceTypes: ResourceTypeDto[];
+  onSubmit: (name: string, etapes: RecipeStep[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const initialSteps = useMemo(() => recipeToDraftSteps(recipe.tasks.etapes), [recipe]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-12">
+      <div className="w-full max-w-2xl pb-12">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-white">
+            Modifier — {recipe.name}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-zinc-300 hover:text-white"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <RecipeForm
+          existingNames={existingNames}
+          resourceTypes={resourceTypes}
+          onSubmit={onSubmit}
+          onCancel={onClose}
+          initialName={recipe.name}
+          initialSteps={initialSteps}
+          submitLabel="Enregistrer les modifications"
+        />
+      </div>
+    </div>
+  );
+}
+
 // ─── RecipeForm (simple mode) ─────────────────────────────────────────────────
 
 function RecipeForm({
@@ -352,14 +523,20 @@ function RecipeForm({
   resourceTypes,
   onSubmit,
   onCancel,
+  initialName,
+  initialSteps,
+  submitLabel = "Enregistrer",
 }: {
   existingNames: string[];
   resourceTypes: ResourceTypeDto[];
   onSubmit: (name: string, etapes: RecipeStep[]) => Promise<void>;
   onCancel: () => void;
+  initialName?: string;
+  initialSteps?: DraftStep[];
+  submitLabel?: string;
 }) {
-  const [name, setName] = useState("");
-  const [steps, setSteps] = useState<DraftStep[]>([emptyDraft()]);
+  const [name, setName] = useState(initialName ?? "");
+  const [steps, setSteps] = useState<DraftStep[]>(initialSteps ?? [emptyDraft()]);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -618,7 +795,7 @@ function RecipeForm({
           disabled={saving}
           className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
-          {saving ? "Enregistrement…" : "Enregistrer"}
+          {saving ? "Enregistrement…" : submitLabel}
         </button>
       </div>
     </form>

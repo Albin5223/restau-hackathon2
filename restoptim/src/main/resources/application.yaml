@@ -51,6 +51,10 @@ restoptim:
     # Marge ajoutée à l'horizon temporel du modèle CP-SAT (secondes).
     horizon-padding-seconds: 900
 
+server:
+  error:
+    include-message: always
+
 logging:
   level:
     fr.ultime.restoptim: DEBUG

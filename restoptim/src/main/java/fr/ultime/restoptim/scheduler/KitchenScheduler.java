@@ -384,8 +384,6 @@ public class KitchenScheduler {
                     throw new IllegalArgumentException("taskId dupliqué : " + task.id() + " dans " + job.jobId());
                 if (task.duration() <= 0)
                     throw new IllegalArgumentException("Durée invalide pour task=" + task.id());
-                if (task.resources() == null || task.resources().isEmpty())
-                    throw new IllegalArgumentException("Tâche " + task.id() + " sans ressource.");
                 if (task.kind() == TaskKind.PLATING) platingCount++;
             }
             if (platingCount != 1)

@@ -15,6 +15,7 @@ type RecipesContextValue = {
   recipes: Recipe[];
   addRecipe: (name: string, etapes: RecipeStep[]) => Promise<Recipe>;
   getRecipe: (name: string) => Recipe | undefined;
+  reloadRecipes: () => Promise<void>;
 };
 
 const RecipesContext = createContext<RecipesContextValue | null>(null);
@@ -45,9 +46,14 @@ export function RecipesProvider({ children }: { children: React.ReactNode }) {
     [recipes],
   );
 
+  const reloadRecipes = useCallback(async () => {
+    const data = await api.dishes.list();
+    setRecipes(data);
+  }, []);
+
   const value = useMemo(
-    () => ({ recipes, addRecipe, getRecipe }),
-    [recipes, addRecipe, getRecipe],
+    () => ({ recipes, addRecipe, getRecipe, reloadRecipes }),
+    [recipes, addRecipe, getRecipe, reloadRecipes],
   );
 
   return (

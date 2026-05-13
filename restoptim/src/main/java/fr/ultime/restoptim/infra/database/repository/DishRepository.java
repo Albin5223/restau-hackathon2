@@ -92,10 +92,17 @@ public class DishRepository implements Dishes {
     }
 
     private TaskKind parseKind(JsonNode kindNode) {
-        if (kindNode == null || kindNode.isMissingNode() || kindNode.isNull() || !kindNode.isInt()) {
+        if (kindNode == null || kindNode.isMissingNode() || kindNode.isNull() || !kindNode.isTextual()) {
             return TaskKind.OTHER;
         }
-        return TaskKind.fromId(kindNode.asInt());
+        if(kindNode.isInt()) {
+            return TaskKind.fromId(kindNode.asInt());
+        }
+        try{
+            return TaskKind.valueOf(kindNode.asText().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return TaskKind.OTHER;
+        }
     }
 
     private List<ResourceType> parseResources(JsonNode resourceNode) {

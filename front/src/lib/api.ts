@@ -30,6 +30,25 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ name, tasks }),
       }),
+    importBatch: async (dishList: Array<{ name: string; tasks: Recipe["tasks"] }>) => {
+      const res = await fetch(`${API}/api/dishes/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dishList),
+      });
+      if (!res.ok) {
+        let message = `Erreur ${res.status}`;
+        try {
+          const json = await res.json() as { message?: string };
+          if (json.message) message = json.message;
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+      return res.json() as Promise<Recipe[]>;
+    },
   },
   tables: {
     list: () => request<BackendTable[]>("/api/tables"),

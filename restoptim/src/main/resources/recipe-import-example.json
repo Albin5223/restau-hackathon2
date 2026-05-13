@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Soupe à l'oignon",
+    "tasks": {
+      "etapes": [
+        { "nom": "Émincer les oignons",     "ressource": ["commis"], "kind": "preparation", "duree": 300, "deps": [] },
+        { "nom": "Caraméliser les oignons", "ressource": ["plaque"], "kind": "cooking",     "duree": 1200, "deps": [1] },
+        { "nom": "Mijoter le bouillon",     "ressource": ["plaque"], "kind": "cooking",     "duree": 600,  "deps": [2] },
+        { "nom": "Gratiner au four",        "ressource": ["four"],   "kind": "cooking",     "duree": 300,  "deps": [3] },
+        { "nom": "Dresser l'assiette",      "ressource": ["chef"],   "kind": "plating",    "duree": 60,   "deps": [4] }
+      ]
+    }
+  },
+  {
+    "name": "Tartare de bœuf",
+    "tasks": {
+      "etapes": [
+        { "nom": "Hacher la viande",      "ressource": ["commis"], "kind": "preparation", "duree": 360, "deps": [] },
+        { "nom": "Préparer la garniture", "ressource": ["commis"], "kind": "preparation", "duree": 180, "deps": [] },
+        { "nom": "Assaisonner le tartare","ressource": ["chef"],   "kind": "preparation", "duree": 120, "deps": [1, 2] },
+        { "nom": "Dresser l'assiette",    "ressource": ["chef"],   "kind": "plating",    "duree": 90,  "deps": [3] }
+      ]
+    }
+  },
+  {
+    "name": "Saumon en papillote",
+    "tasks": {
+      "etapes": [
+        { "nom": "Préparer le saumon",     "ressource": ["commis"], "kind": "preparation", "duree": 240, "deps": [] },
+        { "nom": "Préparer la julienne",   "ressource": ["commis"], "kind": "preparation", "duree": 300, "deps": [] },
+        { "nom": "Monter la papillote",    "ressource": ["chef"],   "kind": "preparation", "duree": 120, "deps": [1, 2] },
+        { "nom": "Cuire au four",          "ressource": ["four"],   "kind": "cooking",     "duree": 720, "deps": [3] },
+        { "nom": "Dresser l'assiette",     "ressource": ["chef"],   "kind": "plating",    "duree": 90,  "deps": [4] }
+      ]
+    }
+  },
+  {
+    "name": "Crème brûlée",
+    "tasks": {
+      "etapes": [
+        { "nom": "Préparer l'appareil",   "ressource": ["commis"], "kind": "preparation", "duree": 300, "deps": [] },
+        { "nom": "Cuire au bain-marie",   "ressource": ["four"],   "kind": "cooking",     "duree": 2400, "deps": [1] },
+        { "nom": "Refroidir",             "ressource": [],         "kind": "other",       "duree": 3600, "deps": [2] },
+        { "nom": "Caraméliser au chalumeau", "ressource": ["chef"],"kind": "plating",    "duree": 60,   "deps": [3] }
+      ]
+    }
+  },
+  {
+    "name": "Pavé de cabillaud beurre blanc",
+    "tasks": {
+      "etapes": [
+        { "nom": "Préparer le cabillaud",  "ressource": ["commis"], "kind": "preparation", "duree": 180, "deps": [] },
+        { "nom": "Préparer le beurre blanc","ressource": ["commis"],"kind": "preparation", "duree": 240, "deps": [] },
+        { "nom": "Saisir le cabillaud",    "ressource": ["plaque"], "kind": "cooking",     "duree": 360, "deps": [1] },
+        { "nom": "Monter le beurre blanc", "ressource": ["plaque"], "kind": "cooking",     "duree": 180, "deps": [2] },
+        { "nom": "Dresser l'assiette",     "ressource": ["chef"],   "kind": "plating",    "duree": 90,  "deps": [3, 4] }
+      ]
+    }
+  },
+  {
+    "name": "Tarte tatin",
+    "tasks": {
+      "etapes": [
+        { "nom": "Préparer la pâte",       "ressource": ["commis"], "kind": "preparation", "duree": 600, "deps": [] },
+        { "nom": "Caraméliser les pommes", "ressource": ["plaque"], "kind": "cooking",     "duree": 480, "deps": [] },
+        { "nom": "Assembler la tarte",     "ressource": ["chef"],   "kind": "preparation", "duree": 120, "deps": [1, 2] },
+        { "nom": "Cuire au four",          "ressource": ["four"],   "kind": "cooking",     "duree": 1500, "deps": [3] },
+        { "nom": "Démouler et dresser",    "ressource": ["chef"],   "kind": "plating",    "duree": 120, "deps": [4] }
+      ]
+    }
+  }
+]

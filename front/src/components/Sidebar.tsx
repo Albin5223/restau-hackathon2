@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/", label: "Vue d'ensemble" },
   { href: "/cuisine", label: "Cuisine" },
-  { href: "/tables", label: "Salle" },
+  { href: "/salle", label: "Salle" },
+  { href: "/tables", label: "Tables" },
   { href: "/menu", label: "Menu" },
   { href: "/simulation", label: "Simulation" },
 ];
@@ -15,7 +16,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="mb-8 px-2">
         <p className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
           Restoptim

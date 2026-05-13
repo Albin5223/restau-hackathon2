@@ -39,9 +39,9 @@ public class OrderRepository implements Orders {
     @Transactional
     public void save(Order order) {
         jdbcTemplate.update(INSERT_COMMANDE,
-                order.id(), order.tableId(), order.placedAt(), order.scheduleJson());
+                order.id().value(), order.tableId().value(), order.placedAt(), order.scheduleJson());
         for (int i = 0; i < order.dishIds().size(); i++) {
-            jdbcTemplate.update(INSERT_ITEM, order.id(), order.dishIds().get(i), i);
+            jdbcTemplate.update(INSERT_ITEM, order.id().value(), order.dishIds().get(i).value(), i);
         }
     }
 

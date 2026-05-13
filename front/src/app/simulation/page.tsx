@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { GanttChart } from "@/components/GanttChart";
 import { api } from "@/lib/api";
 import type {
-  BackendCommandeResult,
+  BackendOrderResult,
   BackendTable,
   Recipe,
   ScheduledStep,
@@ -122,7 +122,7 @@ function AutoSimulation() {
 
 // ── Mode manuel ───────────────────────────────────────────────────────────────
 
-function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): ScheduledStep[] {
+function toScheduledSteps(task: BackendOrderResult["scheduledTasks"][0]): ScheduledStep[] {
   const now = Date.now();
   let status: ScheduledStepStatus = "a_venir";
   if (task.endAt < now) status = "termine";
@@ -131,7 +131,7 @@ function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): Sch
   if (task.resourceNames.length === 0) {
     return [{
       id: task.id,
-      orderId: task.commandeId,
+      orderId: task.orderId,
       tableNumber: task.tableNumber,
       recipeName: task.dishName,
       stepName: task.taskName,
@@ -146,7 +146,7 @@ function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): Sch
 
   return task.resourceNames.map((name, idx) => ({
     id: idx === 0 ? task.id : `${task.id}__r${idx}`,
-    orderId: task.commandeId,
+    orderId: task.orderId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
     stepName: task.taskName,
@@ -165,7 +165,7 @@ function ManualSimulation() {
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [dishSelections, setDishSelections] = useState<(number | null)[]>([null]);
   const [speedMultiplier, setSpeedMultiplier] = useState(1.0);
-  const [result, setResult] = useState<BackendCommandeResult | null>(null);
+  const [result, setResult] = useState<BackendOrderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -211,7 +211,7 @@ function ManualSimulation() {
     setError(null);
     setResult(null);
     try {
-      const res = await api.commandes.place(selectedTableId, dishIds, speedMultiplier);
+      const res = await api.orders.place(selectedTableId, dishIds, speedMultiplier);
       setResult(res);
       // refresh tables to reflect new status
       setTables(await api.tables.list());
@@ -371,7 +371,7 @@ function ManualSimulation() {
                 })}
               </span>
               {" · "}
-              <span className="font-mono text-xs opacity-70">{result.commandeId}</span>
+              <span className="font-mono text-xs opacity-70">{result.orderId}</span>
             </p>
           </div>
           <GanttChart steps={ganttSteps} />

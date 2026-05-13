@@ -1,13 +1,19 @@
-// Aligned with the SQL schema:
-//   CREATE TABLE recipe_documents (id INTEGER PK, name TEXT UNIQUE, tasks JSON)
-//   tasks = { etapes: [{ nom, ressource[], duree, deps[], kind }] }
-// `deps` references step positions in `etapes` (1-based, like the seed data).
+// Aligned with the new backend (post commande→order, post ID refactor).
+//
+// Backend `Dish` table:
+//   CREATE TABLE dish (id INTEGER PK, name TEXT UNIQUE, tasks JSON)
+//   tasks = [{ nom, resources[], duration, dependencies[], type }]
+//
+// `dependencies` are 0-based indices into the flat tasks list.
+//
+// Wire shape for IDs is `{ value: ... }` (Java records). The `api` layer
+// unwraps to flat scalars so component code stays simple.
 export type RecipeStep = {
   nom: string;
-  ressource: string[];
-  duree: number;
-  deps: number[];
-  kind?: string;
+  resources: string[];
+  duration: number;
+  dependencies: number[];
+  type?: string;
 };
 
 export type ResourceTypeDto = {
@@ -18,7 +24,7 @@ export type ResourceTypeDto = {
 export type Recipe = {
   id: number;
   name: string;
-  tasks: { etapes: RecipeStep[] };
+  tasks: RecipeStep[];
 };
 
 export type TableStatus =
@@ -27,14 +33,14 @@ export type TableStatus =
   | "en_preparation"
   | "servie";
 
-// Backend-aligned table (id is numeric from DB)
+// Flat after api-layer unwrap
 export type BackendTable = {
   id: number;
   number: number;
   seats: number;
   status: TableStatus;
   partySize: number | null;
-  commandeId: string | null;
+  orderId: string | null;
 };
 
 // StepKind used for Gantt colour coding
@@ -56,10 +62,10 @@ export type ScheduledStep = {
   status: ScheduledStepStatus;
 };
 
-// Backend Gantt payload
+// Flat after api-layer unwrap (raw backend has orderId: { value: string })
 export type BackendGanttTask = {
   id: string;
-  commandeId: string;
+  orderId: string;
   tableNumber: number;
   dishName: string;
   taskName: string;
@@ -74,8 +80,8 @@ export type BackendGanttResponse = {
   generatedAt: number;
 };
 
-export type BackendCommandeResult = {
-  commandeId: string;
+export type BackendOrderResult = {
+  orderId: string;
   tableNumber: number;
   serviceTimeAt: number;
   scheduledTasks: BackendGanttTask[];

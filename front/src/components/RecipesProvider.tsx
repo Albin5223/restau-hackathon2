@@ -13,7 +13,7 @@ import { api } from "@/lib/api";
 
 type RecipesContextValue = {
   recipes: Recipe[];
-  addRecipe: (name: string, etapes: RecipeStep[]) => Promise<Recipe>;
+  addRecipe: (name: string, tasks: RecipeStep[]) => Promise<Recipe>;
   getRecipe: (name: string) => Recipe | undefined;
   reloadRecipes: () => Promise<void>;
 };
@@ -35,8 +35,8 @@ export function RecipesProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false; };
   }, []);
 
-  const addRecipe = useCallback(async (name: string, etapes: RecipeStep[]) => {
-    const created = await api.dishes.create(name, { etapes });
+  const addRecipe = useCallback(async (name: string, tasks: RecipeStep[]) => {
+    const created = await api.dishes.create(name, tasks);
     setRecipes((prev) => [...prev, created]);
     return created;
   }, []);

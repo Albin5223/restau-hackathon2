@@ -1,7 +1,7 @@
 import type { Recipe, RecipeStep } from "./types";
 
 // Compute earliest start/end for each step given the dependency DAG.
-// `deps` are 1-based indices into etapes (matching the DB seed format).
+// `dependencies` are 0-based indices into the flat tasks array.
 // Returns the critical path total (seconds) and per-step timings.
 export type StepTiming = {
   startSec: number;
@@ -12,21 +12,18 @@ export function computeSchedule(recipe: Recipe): {
   totalSec: number;
   timings: StepTiming[];
 } {
-  const { etapes } = recipe.tasks;
-  const timings: StepTiming[] = etapes.map(() => ({ startSec: 0, endSec: 0 }));
+  const steps = recipe.tasks;
+  const timings: StepTiming[] = steps.map(() => ({ startSec: 0, endSec: 0 }));
 
-  // Topological order isn't strictly required if we resolve recursively
-  // with memoisation. We expect tiny DAGs (a few steps), so we'll loop
-  // until a fixpoint to avoid an explicit topo sort.
   let changed = true;
-  let safety = etapes.length * etapes.length + 10;
+  let safety = steps.length * steps.length + 10;
   while (changed && safety-- > 0) {
     changed = false;
-    for (let i = 0; i < etapes.length; i++) {
-      const step = etapes[i];
-      const depEnds = step.deps.map((d) => timings[d - 1]?.endSec ?? 0);
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const depEnds = step.dependencies.map((d) => timings[d]?.endSec ?? 0);
       const start = depEnds.length ? Math.max(...depEnds) : 0;
-      const end = start + step.duree;
+      const end = start + step.duration;
       if (timings[i].startSec !== start || timings[i].endSec !== end) {
         timings[i] = { startSec: start, endSec: end };
         changed = true;
@@ -82,13 +79,13 @@ export function validateRecipe(
     const pos = i + 1;
     if (!step.nom.trim())
       errors.push(`Étape ${pos} : le nom est obligatoire.`);
-    if (!(step.duree > 0))
+    if (!(step.duration > 0))
       errors.push(`Étape ${pos} : la durée doit être > 0.`);
-    for (const d of step.deps) {
-      if (d < 1 || d > steps.length)
+    for (const d of step.dependencies) {
+      if (d < 0 || d >= steps.length)
         errors.push(`Étape ${pos} : dépendance ${d} invalide.`);
-      if (d === pos) errors.push(`Étape ${pos} : ne peut pas dépendre d'elle-même.`);
-      if (d > pos)
+      if (d === i) errors.push(`Étape ${pos} : ne peut pas dépendre d'elle-même.`);
+      if (d > i)
         errors.push(
           `Étape ${pos} : ne peut dépendre que d'étapes antérieures.`,
         );
@@ -100,8 +97,8 @@ export function validateRecipe(
 
 export function allResources(recipe: Recipe): string[] {
   const set = new Set<string>();
-  for (const step of recipe.tasks.etapes) {
-    for (const r of step.ressource) set.add(r);
+  for (const step of recipe.tasks) {
+    for (const r of step.resources) set.add(r);
   }
   return [...set];
 }

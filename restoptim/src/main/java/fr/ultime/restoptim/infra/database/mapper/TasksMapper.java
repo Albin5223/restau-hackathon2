@@ -21,7 +21,7 @@ public class TasksMapper {
     public List<Task> toDomain(String jsonString) {
         List<Task> tasks = new ArrayList<>();
 
-        TasksJsonDto dtos = objectMapper.convertValue(jsonString, TasksJsonDto.class);
+        TasksJsonDto dtos = objectMapper.readValue(jsonString, TasksJsonDto.class);
 
         for (int i = 0; i < dtos.getTasks().size(); i++) {
             tasks.add(new Task(

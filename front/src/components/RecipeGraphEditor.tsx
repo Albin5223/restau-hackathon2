@@ -33,9 +33,9 @@ import { validateRecipe } from "@/lib/recipes";
 
 type StepFields = {
   nom: string;
-  kind: string;
-  ressource: string[];
-  duree: number;
+  type: string;
+  resources: string[];
+  duration: number;
 };
 
 type GraphCtxValue = {
@@ -79,7 +79,7 @@ function makeNode(id: string, position: { x: number; y: number }): Node {
     id,
     type: "stepNode",
     position,
-    data: { nom: "", kind: "preparation", ressource: [], duree: 5 } as StepFields,
+    data: { nom: "", type: "preparation", resources: [], duration: 5 } as StepFields,
   };
 }
 
@@ -87,8 +87,8 @@ function makeNode(id: string, position: { x: number; y: number }): Node {
 
 function StepNode({ id, data }: NodeProps) {
   const ctx = useContext(GraphCtx)!;
-  const { nom, kind, ressource, duree } = data as unknown as StepFields;
-  const kindLabel = KINDS.find((k) => k.value === kind)?.label ?? kind;
+  const { nom, type, resources, duration } = data as unknown as StepFields;
+  const kindLabel = KINDS.find((k) => k.value === type)?.label ?? type;
 
   return (
     <div className="w-64 rounded-xl border-2 border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
@@ -102,7 +102,7 @@ function StepNode({ id, data }: NodeProps) {
       {/* Header */}
       <div className="flex items-center justify-between rounded-t-xl border-b border-zinc-100 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-800/60">
         <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${KIND_COLORS[kind] ?? KIND_COLORS.other}`}
+          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${KIND_COLORS[type] ?? KIND_COLORS.other}`}
         >
           {kindLabel}
         </span>
@@ -131,15 +131,15 @@ function StepNode({ id, data }: NodeProps) {
           />
         </div>
 
-        {/* Kind + Durée inline */}
+        {/* Type + Durée inline */}
         <div className="grid grid-cols-2 gap-2">
           <div>
             <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
               Type
             </p>
             <select
-              value={kind}
-              onChange={(e) => ctx.updateNode(id, { kind: e.target.value })}
+              value={type}
+              onChange={(e) => ctx.updateNode(id, { type: e.target.value })}
               className="w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
             >
               {KINDS.map((k) => (
@@ -156,9 +156,9 @@ function StepNode({ id, data }: NodeProps) {
             <input
               type="number"
               min={1}
-              value={duree}
+              value={duration}
               onChange={(e) =>
-                ctx.updateNode(id, { duree: Math.max(1, Number(e.target.value) || 1) })
+                ctx.updateNode(id, { duration: Math.max(1, Number(e.target.value) || 1) })
               }
               className="w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs tabular-nums outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
             />
@@ -175,16 +175,16 @@ function StepNode({ id, data }: NodeProps) {
           ) : (
             <div className="flex flex-wrap gap-1">
               {ctx.resourceTypes.map((r) => {
-                const checked = ressource.includes(r.name);
+                const checked = resources.includes(r.name);
                 return (
                   <button
                     key={r.name}
                     type="button"
                     onClick={() =>
                       ctx.updateNode(id, {
-                        ressource: checked
-                          ? ressource.filter((x) => x !== r.name)
-                          : [...ressource, r.name],
+                        resources: checked
+                          ? resources.filter((x) => x !== r.name)
+                          : [...resources, r.name],
                       })
                     }
                     className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition-all ${
@@ -240,7 +240,7 @@ function RecipeGraphEditorInner({
 }: {
   existingNames: string[];
   resourceTypes: ResourceTypeDto[];
-  onSubmit: (name: string, etapes: RecipeStep[]) => Promise<void>;
+  onSubmit: (name: string, tasks: RecipeStep[]) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState("");
@@ -316,7 +316,7 @@ function RecipeGraphEditorInner({
     [resourceTypes, updateNode, deleteNode, addChildNode],
   );
 
-  // ── Submit: convert graph → etapes[] ─────────────────────────────────────
+  // ── Submit: convert graph → tasks[] ──────────────────────────────────────
 
   function handleSubmit() {
     setErrors([]);
@@ -360,25 +360,25 @@ function RecipeGraphEditorInner({
       return;
     }
 
-    // Assign 1-based indices in topological order, then build etapes
+    // Assign 0-based indices in topological order, then build tasks
     const indexMap = new Map<string, number>();
-    topoOrder.forEach((id, i) => indexMap.set(id, i + 1));
+    topoOrder.forEach((id, i) => indexMap.set(id, i));
 
-    const etapes: RecipeStep[] = topoOrder.map((id) => {
+    const tasks: RecipeStep[] = topoOrder.map((id) => {
       const node = currentNodes.find((n) => n.id === id)!;
       const d = node.data as unknown as StepFields;
-      const deps = (depsMap.get(id) ?? [])
-        .map((depId) => indexMap.get(depId) ?? 0)
-        .filter((x) => x > 0)
+      const dependencies = (depsMap.get(id) ?? [])
+        .map((depId) => indexMap.get(depId))
+        .filter((x): x is number => typeof x === "number")
         .sort((a, b) => a - b);
-      return { nom: d.nom.trim(), kind: d.kind, ressource: d.ressource, duree: d.duree * 60, deps }; // user enters minutes, backend stores seconds
+      return { nom: d.nom.trim(), type: d.type, resources: d.resources, duration: d.duration * 60, dependencies }; // user enters minutes, backend stores seconds
     });
 
-    const errs = validateRecipe(name, etapes, existingNames);
+    const errs = validateRecipe(name, tasks, existingNames);
     if (errs.length > 0) { setErrors(errs); return; }
 
     setSaving(true);
-    onSubmit(name, etapes)
+    onSubmit(name, tasks)
       .catch(() => setErrors(["Erreur lors de l'enregistrement. Réessayez."]))
       .finally(() => setSaving(false));
   }

@@ -197,9 +197,9 @@ function TableDetail({
           <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
             {table.partySize} couvert(s)
           </p>
-          {table.commandeId ? (
+          {table.orderId ? (
             <p className="mt-1 text-xs text-zinc-500">
-              Commande : <span className="font-mono">{table.commandeId}</span>
+              Commande : <span className="font-mono">{table.orderId}</span>
             </p>
           ) : (
             <p className="mt-2 text-xs text-zinc-500">

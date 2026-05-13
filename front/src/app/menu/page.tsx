@@ -21,9 +21,9 @@ const KINDS = [
 type DraftStep = {
   uid: string;
   nom: string;
-  ressource: string[];
-  kind: string;
-  duree: number;
+  resources: string[];
+  type: string;
+  duration: number;
   deps: string[];
 };
 
@@ -32,9 +32,9 @@ const nextUid = () => `s${++uidCounter}`;
 const emptyDraft = (): DraftStep => ({
   uid: nextUid(),
   nom: "",
-  ressource: [],
-  kind: "preparation",
-  duree: 5,
+  resources: [],
+  type: "preparation",
+  duration: 5,
   deps: [],
 });
 
@@ -57,8 +57,8 @@ export default function MenuPage() {
     setShowForm(false);
   }
 
-  async function handleSubmit(name: string, etapes: RecipeStep[]) {
-    await addRecipe(name, etapes);
+  async function handleSubmit(name: string, tasks: RecipeStep[]) {
+    await addRecipe(name, tasks);
     setShowForm(false);
   }
 
@@ -167,20 +167,20 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
       </header>
 
       <ol className="mt-3 space-y-1 text-xs">
-        {recipe.tasks.etapes.map((etape, i) => (
+        {recipe.tasks.map((step, i) => (
           <li key={i} className="flex items-center justify-between gap-2">
             <span className="text-zinc-700 dark:text-zinc-300">
               <span className="mr-1 font-mono text-zinc-400">#{i + 1}</span>
-              {etape.nom}
-              <span className="ml-1 text-zinc-500">({etape.ressource.join(", ")})</span>
-              {etape.deps.length > 0 ? (
+              {step.nom}
+              <span className="ml-1 text-zinc-500">({step.resources.join(", ")})</span>
+              {step.dependencies.length > 0 ? (
                 <span className="ml-1 text-zinc-400">
-                  dép. {etape.deps.map((d) => `#${d}`).join(", ")}
+                  dép. {step.dependencies.map((d) => `#${d + 1}`).join(", ")}
                 </span>
               ) : null}
             </span>
             <span className="font-mono tabular-nums text-zinc-600 dark:text-zinc-400">
-              {formatDuration(etape.duree)}
+              {formatDuration(step.duration)}
             </span>
           </li>
         ))}
@@ -233,7 +233,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       }
       const dishList = (Array.isArray(parsed) ? parsed : [parsed]) as Array<{
         name: string;
-        tasks: Recipe["tasks"];
+        tasks: RecipeStep[];
       }>;
       const imported = await api.dishes.importBatch(dishList);
       await reloadRecipes();
@@ -256,9 +256,9 @@ function ImportModal({ onClose }: { onClose: () => void }) {
         <p className="mt-1 text-xs text-zinc-500">
           Format attendu : objet unique ou tableau JSON{" "}
           <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">
-            {"[{ name, tasks: { etapes: [...] } }]"}
+            {"[{ name, tasks: [{ nom, resources, duration, dependencies, type }] }]"}
           </code>
-          . La durée (<code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">duree</code>) est en secondes.
+          . La durée (<code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">duration</code>) est en secondes. Les <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">dependencies</code> sont des indices 0-based dans la liste <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">tasks</code>.
         </p>
 
         {/* Drag & drop zone */}
@@ -355,7 +355,7 @@ function RecipeForm({
 }: {
   existingNames: string[];
   resourceTypes: ResourceTypeDto[];
-  onSubmit: (name: string, etapes: RecipeStep[]) => Promise<void>;
+  onSubmit: (name: string, tasks: RecipeStep[]) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState("");
@@ -373,9 +373,9 @@ function RecipeForm({
         s.uid === stepUid
           ? {
               ...s,
-              ressource: s.ressource.includes(resource)
-                ? s.ressource.filter((r) => r !== resource)
-                : [...s.ressource, resource],
+              resources: s.resources.includes(resource)
+                ? s.resources.filter((r) => r !== resource)
+                : [...s.resources, resource],
             }
           : s,
       ),
@@ -411,25 +411,25 @@ function RecipeForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const uidToIndex = new Map(steps.map((s, i) => [s.uid, i + 1]));
-    const etapes: RecipeStep[] = steps.map((s) => ({
+    const uidToIndex = new Map(steps.map((s, i) => [s.uid, i]));
+    const tasks: RecipeStep[] = steps.map((s) => ({
       nom: s.nom.trim(),
-      ressource: s.ressource,
-      kind: s.kind,
-      duree: Number(s.duree) * 60, // user enters minutes, backend stores seconds
-      deps: s.deps
+      resources: s.resources,
+      type: s.type,
+      duration: Number(s.duration) * 60, // user enters minutes, backend stores seconds
+      dependencies: s.deps
         .map((u) => uidToIndex.get(u))
         .filter((n): n is number => typeof n === "number")
         .sort((a, b) => a - b),
     }));
 
-    const errs = validateRecipe(name, etapes, existingNames);
+    const errs = validateRecipe(name, tasks, existingNames);
     setErrors(errs);
     if (errs.length > 0) return;
 
     setSaving(true);
     try {
-      await onSubmit(name, etapes);
+      await onSubmit(name, tasks);
     } catch {
       setErrors(["Erreur lors de l'enregistrement. Réessayez."]);
     } finally {
@@ -505,8 +505,8 @@ function RecipeForm({
                     Type
                   </span>
                   <select
-                    value={step.kind}
-                    onChange={(e) => updateStep(step.uid, { kind: e.target.value })}
+                    value={step.type}
+                    onChange={(e) => updateStep(step.uid, { type: e.target.value })}
                     className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950"
                   >
                     {KINDS.map((k) => (
@@ -523,8 +523,8 @@ function RecipeForm({
                   <input
                     type="number"
                     min={1}
-                    value={step.duree}
-                    onChange={(e) => updateStep(step.uid, { duree: Number(e.target.value) })}
+                    value={step.duration}
+                    onChange={(e) => updateStep(step.uid, { duration: Number(e.target.value) })}
                     className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm tabular-nums dark:border-zinc-700 dark:bg-zinc-950"
                   />
                 </label>
@@ -539,7 +539,7 @@ function RecipeForm({
                     <span className="text-xs text-zinc-400">Chargement…</span>
                   ) : (
                     resourceTypes.map((r) => {
-                      const checked = step.ressource.includes(r.name);
+                      const checked = step.resources.includes(r.name);
                       return (
                         <button
                           key={r.name}

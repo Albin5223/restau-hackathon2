@@ -26,18 +26,18 @@ export const resources: Resource[] = [
 ];
 
 export const initialRecipes: Recipe[] = [
-  { id: 1, name: "Magret de canard",      tasks: { etapes: [
-    { nom: "Préparer magret",    ressource: ["commis"], duree: 6,  deps: [] },
-    { nom: "Préparer écrasé",    ressource: ["commis"], duree: 4,  deps: [] },
-    { nom: "Cuire magret",       ressource: ["plaque"], duree: 9,  deps: [1] },
-    { nom: "Cuire écrasé",       ressource: ["plaque"], duree: 5,  deps: [2] },
-    { nom: "Dresser l'assiette", ressource: ["chef"],   duree: 2,  deps: [3, 4] },
-  ]}},
-  { id: 2, name: "Coquilles Saint-Jacques", tasks: { etapes: [
-    { nom: "Préparer Saint-Jacques", ressource: ["commis"], duree: 5, deps: [] },
-    { nom: "Snacker Saint-Jacques",  ressource: ["plaque"], duree: 2, deps: [1] },
-    { nom: "Dresser l'assiette",     ressource: ["chef"],   duree: 2, deps: [2] },
-  ]}},
+  { id: 1, name: "Magret de canard", tasks: [
+    { nom: "Préparer magret",    resources: ["commis"], duration: 360, dependencies: [],     type: "preparation" },
+    { nom: "Préparer écrasé",    resources: ["commis"], duration: 240, dependencies: [],     type: "preparation" },
+    { nom: "Cuire magret",       resources: ["plaque"], duration: 540, dependencies: [0],    type: "cuisson" },
+    { nom: "Cuire écrasé",       resources: ["plaque"], duration: 300, dependencies: [1],    type: "cuisson" },
+    { nom: "Dresser l'assiette", resources: ["chef"],   duration: 120, dependencies: [2, 3], type: "dressage" },
+  ]},
+  { id: 2, name: "Coquilles Saint-Jacques", tasks: [
+    { nom: "Préparer Saint-Jacques", resources: ["commis"], duration: 300, dependencies: [],  type: "preparation" },
+    { nom: "Snacker Saint-Jacques",  resources: ["plaque"], duration: 120, dependencies: [0], type: "cuisson" },
+    { nom: "Dresser l'assiette",     resources: ["chef"],   duration: 120, dependencies: [1], type: "dressage" },
+  ]},
 ];
 
 export const tables: MockTable[] = [

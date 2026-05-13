@@ -6,6 +6,7 @@ import java.util.Optional;
 import fr.ultime.restoptim.domain.model.dish.CreateDishRequest;
 import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.dish.DishId;
+import fr.ultime.restoptim.domain.model.task.Task;
 
 public interface Dishes {
 
@@ -15,7 +16,7 @@ public interface Dishes {
 
     DishId save(CreateDishRequest createDishRequest);
 
-    Dish update(DishId id, String name, String tasksJson);
+    Dish update(DishId id, String name, List<Task> tasks);
 
     void delete(DishId id);
 }

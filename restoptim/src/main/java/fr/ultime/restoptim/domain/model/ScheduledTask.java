@@ -12,5 +12,5 @@ public record ScheduledTask(
         long startSecond,
         long endSecond,
         List<ResourceType> resources,
-        String assignedResourceName) {
+        List<String> assignedResourceNames) {
 }

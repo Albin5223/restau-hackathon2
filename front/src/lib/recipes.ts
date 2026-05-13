@@ -2,18 +2,18 @@ import type { Recipe, RecipeStep } from "./types";
 
 // Compute earliest start/end for each step given the dependency DAG.
 // `deps` are 1-based indices into etapes (matching the DB seed format).
-// Returns the critical path total (minutes) and per-step timings.
+// Returns the critical path total (seconds) and per-step timings.
 export type StepTiming = {
-  startMin: number;
-  endMin: number;
+  startSec: number;
+  endSec: number;
 };
 
 export function computeSchedule(recipe: Recipe): {
-  totalMin: number;
+  totalSec: number;
   timings: StepTiming[];
 } {
   const { etapes } = recipe.tasks;
-  const timings: StepTiming[] = etapes.map(() => ({ startMin: 0, endMin: 0 }));
+  const timings: StepTiming[] = etapes.map(() => ({ startSec: 0, endSec: 0 }));
 
   // Topological order isn't strictly required if we resolve recursively
   // with memoisation. We expect tiny DAGs (a few steps), so we'll loop
@@ -24,18 +24,18 @@ export function computeSchedule(recipe: Recipe): {
     changed = false;
     for (let i = 0; i < etapes.length; i++) {
       const step = etapes[i];
-      const depEnds = step.deps.map((d) => timings[d - 1]?.endMin ?? 0);
+      const depEnds = step.deps.map((d) => timings[d - 1]?.endSec ?? 0);
       const start = depEnds.length ? Math.max(...depEnds) : 0;
       const end = start + step.duree;
-      if (timings[i].startMin !== start || timings[i].endMin !== end) {
-        timings[i] = { startMin: start, endMin: end };
+      if (timings[i].startSec !== start || timings[i].endSec !== end) {
+        timings[i] = { startSec: start, endSec: end };
         changed = true;
       }
     }
   }
 
-  const totalMin = timings.reduce((m, t) => Math.max(m, t.endMin), 0);
-  return { totalMin, timings };
+  const totalSec = timings.reduce((m, t) => Math.max(m, t.endSec), 0);
+  return { totalSec, timings };
 }
 
 export function assignTracks(
@@ -45,18 +45,18 @@ export function assignTracks(
   const trackEnds: number[] = [];
 
   for (let i = 0; i < timings.length; i++) {
-    const { startMin, endMin } = timings[i];
+    const { startSec, endSec } = timings[i];
     let assigned = -1;
     for (let t = 0; t < trackEnds.length; t++) {
-      if (trackEnds[t] <= startMin) {
+      if (trackEnds[t] <= startSec) {
         assigned = t;
-        trackEnds[t] = endMin;
+        trackEnds[t] = endSec;
         break;
       }
     }
     if (assigned === -1) {
       assigned = trackEnds.length;
-      trackEnds.push(endMin);
+      trackEnds.push(endSec);
     }
     tracks[i] = assigned;
   }

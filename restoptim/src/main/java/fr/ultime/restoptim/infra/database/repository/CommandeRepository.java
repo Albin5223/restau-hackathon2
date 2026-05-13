@@ -25,6 +25,10 @@ public class CommandeRepository implements Commandes {
             "SELECT id, table_id, placed_at, schedule FROM commandes WHERE status = 'EN_PREPARATION' ORDER BY placed_at";
     private static final String SELECT_DISH_IDS =
             "SELECT dish_id FROM commande_items WHERE commande_id = ? ORDER BY position";
+    private static final String CLOSE_COMMANDE =
+            "UPDATE commandes SET status = 'TERMINEE' WHERE id = ?";
+    private static final String UPDATE_SCHEDULE =
+            "UPDATE commandes SET schedule = ? WHERE id = ?";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -45,6 +49,16 @@ public class CommandeRepository implements Commandes {
             return new Commande(rs.getString("id"), rs.getInt("table_id"),
                     rs.getLong("placed_at"), dishIds, rs.getString("schedule"));
         }, id).stream().findFirst();
+    }
+
+    @Override
+    public void closeCommande(String commandeId) {
+        jdbcTemplate.update(CLOSE_COMMANDE, commandeId);
+    }
+
+    @Override
+    public void updateSchedule(String commandeId, String scheduleJson) {
+        jdbcTemplate.update(UPDATE_SCHEDULE, scheduleJson, commandeId);
     }
 
     @Override

@@ -13,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import fr.ultime.restoptim.domain.model.Table;
 import fr.ultime.restoptim.domain.model.TableStatus;
+import fr.ultime.restoptim.domain.spi.Commandes;
 import fr.ultime.restoptim.domain.spi.Tables;
 import lombok.RequiredArgsConstructor;
 
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class TableController {
 
     private final Tables tables;
+    private final Commandes commandes;
 
     @GetMapping
     public List<Table> list() {
@@ -55,6 +57,9 @@ public class TableController {
     public Table release(@PathVariable int id) {
         Table table = tables.getTableById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
+        if (table.commandeId() != null) {
+            commandes.closeCommande(table.commandeId());
+        }
         Table updated = new Table(table.id(), table.number(), table.seats(), TableStatus.LIBRE, null, null);
         tables.save(updated);
         return updated;

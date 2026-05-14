@@ -125,6 +125,13 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const prevLogsCountRef = useRef(0);
+  const [logsAutoScroll, setLogsAutoScroll] = useState(true);
+  const hasOngoingTasks = useMemo(
+    () => ganttSteps.some((step) => step.endAt > Date.now()),
+    [ganttSteps],
+  );
 
   // Polling du statut de simulation
   useEffect(() => {
@@ -173,12 +180,18 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
     };
   }, []);
 
-  // Auto-scroll des logs vers le bas
+  // Auto-scroll des logs vers le bas (seulement si on est déjà en bas)
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [status.logs]);
+    const isNewLog = status.logs.length > prevLogsCountRef.current;
+    prevLogsCountRef.current = status.logs.length;
+    if (!isNewLog || !logsAutoScroll) return;
+    const el = logsContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [status.logs, logsAutoScroll]);
 
   async function handleStart() {
+    if (hasOngoingTasks) return;
     setStarting(true);
     setError(null);
     try {
@@ -287,12 +300,25 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
           </p>
         ) : null}
 
+        {!status.active && hasOngoingTasks ? (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            Impossible de lancer la simulation automatique, veuillez{" "}
+            <Link
+              href="/salle"
+              className="font-semibold underline decoration-dotted hover:text-red-700 dark:hover:text-red-200"
+            >
+              libérer toutes les tables
+            </Link>
+            .
+          </p>
+        ) : null}
+
         <div className="mt-6 space-y-2">
           {!status.active ? (
             <button
               onClick={handleStart}
-              disabled={starting}
-              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              disabled={starting || hasOngoingTasks}
+              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
               {starting ? "Démarrage…" : "Lancer la simulation"}
             </button>
@@ -327,7 +353,17 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
               : `${status.logs.length} événement(s) enregistré(s)`}
           </p>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-3" style={{ maxHeight: "60vh" }}>
+        <div
+          ref={logsContainerRef}
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-3"
+          style={{ maxHeight: "60vh" }}
+          onScroll={() => {
+            const el = logsContainerRef.current;
+            if (!el) return;
+            const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            setLogsAutoScroll(distanceFromBottom < 24);
+          }}
+        >
           {status.logs.length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-400">
               Aucun événement pour l&apos;instant.

@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ScheduledStep, ScheduledStepStatus } from "@/lib/types";
 import { formatDuration } from "@/lib/format";
 
 function kindColor(kind: string, noResource = false): string {
-  if (noResource) return "bg-zinc-300/80 border-zinc-400 text-zinc-700 border-dashed";
-  if (kind === "cuisson") return "bg-amber-500/80 border-amber-600 text-white";
-  if (kind === "dressage") return "bg-emerald-500/80 border-emerald-600 text-white";
-  return "bg-blue-500/80 border-blue-600 text-white";
+  if (noResource) return "bg-zinc-300/80 border border-zinc-400 text-zinc-700 border-dashed";
+  if (kind === "cuisson") return "bg-amber-500/85 text-white";
+  if (kind === "dressage") return "bg-emerald-500/85 text-white";
+  return "bg-blue-500/85 text-white";
 }
 
 function kindDotColor(kind: string): string {
@@ -62,8 +62,20 @@ export function GanttChart({ steps }: Props) {
   const [hoveredBaseStepId, setHoveredBaseStepId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
+  const chartAreaRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1_000);
+    const el = chartAreaRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setChartWidth(entry.contentRect.width));
+    ro.observe(el);
+    setChartWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(id);
   }, []);
 
@@ -98,6 +110,14 @@ export function GanttChart({ steps }: Props) {
   }, [steps]);
 
   const totalMs = endTime - baseTime;
+
+  // Pixel-perfect positioning: all timestamps share the same rounding function,
+  // so toPx(endAt_A) === toPx(startAt_B) when they're equal — no subpixel gaps/overlaps.
+  const toPx = useCallback(
+    (ts: number) =>
+      chartWidth > 0 ? Math.round(((ts - baseTime) / totalMs) * chartWidth) : 0,
+    [chartWidth, baseTime, totalMs],
+  );
 
   const rows = useMemo(() => {
     const seen = new Map<string, string>();
@@ -192,7 +212,7 @@ export function GanttChart({ steps }: Props) {
               <div className="text-xs font-medium uppercase tracking-wider text-zinc-500">
                 Ressource
               </div>
-              <div className="relative h-6">
+              <div ref={chartAreaRef} className="relative h-6">
                 {ticks.map((ts) => {
                   const left = ((ts - baseTime) / totalMs) * 100;
                   return (
@@ -250,8 +270,8 @@ export function GanttChart({ steps }: Props) {
                         />
                       ))}
                       {rowSteps.map((step) => {
-                        const left = ((step.startAt - baseTime) / totalMs) * 100;
-                        const width = ((step.endAt - step.startAt) / totalMs) * 100;
+                        const leftPx = toPx(step.startAt);
+                        const widthPx = Math.max(toPx(step.endAt) - leftPx, 6);
                         const isNoResourceStep = step.resourceId.startsWith("__no_resource__");
                         const isActive =
                           activeOrderId === null || step.orderId === activeOrderId;
@@ -273,10 +293,10 @@ export function GanttChart({ steps }: Props) {
                         return (
                           <div
                             key={step.id}
-                            className={`absolute top-1 flex h-6 cursor-pointer flex-col justify-center overflow-hidden rounded border px-1 leading-tight transition-opacity ${isNoResourceStep ? "" : "shadow-sm"} ${kindColor(step.kind, isNoResourceStep)} ${opacity} ${ring}`}
+                            className={`absolute top-1 flex h-6 cursor-pointer flex-col justify-center overflow-hidden rounded px-1 leading-tight transition-opacity ${isNoResourceStep ? "" : "shadow-sm ring-1 ring-inset ring-black/[.12]"} ${kindColor(step.kind, isNoResourceStep)} ${opacity} ${ring}`}
                             style={{
-                              left: `${left}%`,
-                              width: `${Math.max(width, 1.5)}%`,
+                              left: `${leftPx}px`,
+                              width: `${widthPx}px`,
                               outline: isSiblingHovered
                                 ? "2px solid rgba(255,255,255,0.85)"
                                 : undefined,

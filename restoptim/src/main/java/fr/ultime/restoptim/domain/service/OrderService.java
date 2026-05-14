@@ -63,10 +63,12 @@ public class OrderService {
         }
 
         long realNow = System.currentTimeMillis();
-        // Si l'opérateur a décalé le temps perçu, la nouvelle commande doit
-        // s'aligner sur cette horloge décalée : placed_at recule de l'offset.
+        // Les durées de tâches sont entières en secondes : on arrondit now à la seconde
+        // pour que tous les temps absolus (placedAt, Gantt) soient des multiples de 1000 ms.
+        // Cela garantit que deltaSec = (now - placedAt) / 1000 est exact (pas de troncature)
+        // et élimine les faux chevauchements inter-commandes dus aux fractions de milliseconde.
         long offsetMs = timeShiftService.getOffsetMs();
-        long now = realNow - offsetMs;
+        long now = ((realNow - offsetMs) / 1000) * 1000;
         OrderId orderId = OrderId.from("cmd_" + realNow);
 
         // Construire les jobs de la nouvelle commande

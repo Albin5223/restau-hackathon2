@@ -118,7 +118,7 @@ public class KitchenScheduler {
                 for (Task task : job.dish().tasks()) {
                     String key = key(order.orderId(), job.jobId(), task.id());
                     int lo = (int) Math.min(
-                            taskMinStarts.getOrDefault(job.jobId() + "#" + task.id(), 0L),
+                            taskMinStarts.getOrDefault(job.jobId().value() + "#" + task.id().value(), 0L),
                             horizon);
 
                     IntVar start = model.newIntVar(lo, horizon, "s_" + key);

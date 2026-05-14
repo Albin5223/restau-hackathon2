@@ -218,8 +218,8 @@ public class OrderService {
                             st.resources(), duration, pendingDeps));
 
                     if (minStart > 0L) {
-                        String prefixedJobId = order.id() + "_" + origJobId;
-                        taskMinStarts.put(prefixedJobId + "#" + st.taskId(), minStart);
+                        String prefixedJobId = order.id().value() + "_" + origJobId.value();
+                        taskMinStarts.put(prefixedJobId + "#" + st.taskId().value(), minStart);
                     }
                 }
 
@@ -253,7 +253,7 @@ public class OrderService {
         for (ScheduledTask st : updatedSchedule.scheduledTasks()) {
             String origJobId = st.jobId().startsWith(prefix)
                     ? st.jobId().substring(prefix.length()) : st.jobId().value();
-            updatedByKey.put(origJobId + "#" + st.taskId(), st);
+            updatedByKey.put(origJobId + "#" + st.taskId().value(), st);
         }
 
         // Fusionner : garder les tâches terminées/en cours, remplacer les tâches en attente
@@ -265,7 +265,7 @@ public class OrderService {
             if (!isPending) {
                 merged.add(st); // tâche terminée ou en cours : inchangée
             } else {
-                ScheduledTask updated = updatedByKey.get(st.jobId() + "#" + st.taskId());
+                ScheduledTask updated = updatedByKey.get(st.jobId().value() + "#" + st.taskId().value());
                 if (updated != null) {
                     // Convertir les temps du solveur (relatifs à now) en relatifs à placedAt
                     merged.add(new ScheduledTask(

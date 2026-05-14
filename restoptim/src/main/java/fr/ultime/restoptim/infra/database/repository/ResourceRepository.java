@@ -16,10 +16,9 @@ import lombok.RequiredArgsConstructor;
 public class ResourceRepository implements Resources {
 
     private static final String CAPACITY_QUERY = """
-            SELECT rt.name AS name, COUNT(r.resource_id) AS capacity
+            SELECT rt.name AS name,
+                   (SELECT COUNT(*) FROM resources r WHERE r.resource_type = rt.resource_type_id) AS capacity
             FROM resource_types rt
-            LEFT JOIN resources r ON r.resource_type = rt.resource_type_id
-            GROUP BY rt.resource_type_id, rt.name
             ORDER BY rt.resource_type_id
             """;
 

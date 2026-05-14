@@ -1,21 +1,21 @@
 CREATE TABLE IF NOT EXISTS recipe_documents (
-    id   BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id   INTEGER PRIMARY KEY,
     name TEXT    NOT NULL UNIQUE,
     tasks JSON   NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS resource_types (
-    resource_type_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    resource_type_id INTEGER PRIMARY KEY,
     name             TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS resources (
-    resource_id   BIGINT AUTO_INCREMENT PRIMARY KEY,
+    resource_id   INTEGER PRIMARY KEY,
     resource_type INTEGER NOT NULL REFERENCES resource_types(resource_type_id)
 );
 
 CREATE TABLE IF NOT EXISTS restaurant_tables (
-    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id          INTEGER PRIMARY KEY,
     number      INTEGER NOT NULL UNIQUE,
     seats       INTEGER NOT NULL,
     status      TEXT    NOT NULL DEFAULT 'LIBRE',

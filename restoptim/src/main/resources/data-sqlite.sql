@@ -12,14 +12,12 @@ FROM resources;
 DELETE
 FROM resource_types;
 DELETE
-FROM task_kinds;
-DELETE
 FROM recipe_documents;
 DELETE
 FROM sqlite_sequence
 WHERE name IN (
                'commande_items', 'commandes', 'restaurant_tables',
-               'resources', 'resource_types', 'recipe_documents', 'task_kinds'
+               'resources', 'resource_types', 'recipe_documents'
     );
 
 -- ─── Ressources ───────────────────────────────────────────────────────────────
@@ -38,11 +36,6 @@ VALUES (1, 1), -- commis 1
        (5, 3), -- plaque 2
        (6, 3), -- plaque 3
        (7, 4); -- four
-
-INSERT INTO task_kinds (id, name)
-VALUES (1, 'PREPARATION'),
-       (2, 'COOKING'),
-       (3, 'PLATING');
 
 -- ─── Menu ─────────────────────────────────────────────────────────────────────
 

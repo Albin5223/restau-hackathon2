@@ -82,6 +82,6 @@ jobs:
           port: 22
           script: |
             cd /home/ubuntu/restoptim
-            rm data/*.db
+            sudo rm data/*.db
             docker compose pull
             docker compose up -d

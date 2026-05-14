@@ -24,6 +24,18 @@ export type TimeStatus = {
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
+export class ApiError extends Error {
+  status: number;
+  path: string;
+
+  constructor(path: string, status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {};
   if (init?.body) headers["Content-Type"] = "application/json";
@@ -33,7 +45,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`API ${path} → ${res.status}${text ? ": " + text : ""}`);
+    throw new ApiError(
+      path,
+      res.status,
+      `API ${path} → ${res.status}${text ? ": " + text : ""}`,
+    );
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;

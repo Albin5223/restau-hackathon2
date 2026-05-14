@@ -30,6 +30,8 @@ public class OrderRepository implements Orders {
             "SELECT id, table_id, placed_at, schedule FROM commandes WHERE status = 'EN_PREPARATION' ORDER BY placed_at";
     private static final String SELECT_DISH_IDS =
             "SELECT dish_id FROM commande_items WHERE commande_id = ? ORDER BY position";
+    private static final String COUNT_DISH_REFERENCES =
+            "SELECT COUNT(1) FROM commande_items WHERE dish_id = ?";
     private static final String CLOSE_COMMANDE =
             "UPDATE commandes SET status = 'TERMINEE' WHERE id = ?";
     private static final String UPDATE_SCHEDULE =
@@ -62,6 +64,12 @@ public class OrderRepository implements Orders {
     @Override
     public void closeOrder(OrderId orderId) {
         jdbcTemplate.update(CLOSE_COMMANDE, orderId.value());
+    }
+
+    @Override
+    public boolean isDishReferenced(DishId dishId) {
+        Integer count = jdbcTemplate.queryForObject(COUNT_DISH_REFERENCES, Integer.class, dishId.value());
+        return count != null && count > 0;
     }
 
     @Override

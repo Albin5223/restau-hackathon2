@@ -2,7 +2,6 @@ package fr.ultime.restoptim.domain.service;
 
 import java.util.*;
 
-import fr.ultime.restoptim.domain.model.*;
 import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.job.JobId;
 import fr.ultime.restoptim.domain.model.order.OrderId;
@@ -15,9 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.model.OrderResult;
@@ -32,7 +28,6 @@ import fr.ultime.restoptim.domain.model.ScheduledTask;
 import fr.ultime.restoptim.domain.model.table.Table;
 import fr.ultime.restoptim.domain.model.table.TableStatus;
 import fr.ultime.restoptim.domain.spi.Dishes;
-import fr.ultime.restoptim.domain.spi.Resources;
 import fr.ultime.restoptim.domain.spi.Tables;
 import fr.ultime.restoptim.scheduler.KitchenScheduler;
 import lombok.RequiredArgsConstructor;
@@ -46,7 +41,6 @@ public class OrderService {
     private final Dishes dishes;
     private final Orders orders;
     private final KitchenScheduler scheduler;
-    private final ObjectMapper objectMapper;
     private final TimeShiftService timeShiftService;
 
     /**
@@ -362,14 +356,6 @@ public class OrderService {
             case PREPARATION -> "preparation";
             case OTHER -> "other";
         };
-    }
-
-    private String serialize(OrderSchedule schedule) {
-        try {
-            return objectMapper.writeValueAsString(schedule);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Impossible de sérialiser le planning", e);
-        }
     }
 
     private enum TaskStatus { TERMINEE, EN_COURS, EN_ATTENTE }

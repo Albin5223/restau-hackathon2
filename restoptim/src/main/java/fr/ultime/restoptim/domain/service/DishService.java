@@ -34,8 +34,12 @@ public class DishService implements GetDishesUseCase, GetDishByIdUseCase, Create
     }
 
     @Override
-    public DishId createDish(CreateDishRequest request) {
-        return dishes.save(request);
+    public Dish createDish(CreateDishRequest request) {
+        return Dish.builder()
+                .withId( dishes.save(request))
+                .withTasks(request.tasks())
+                .withName(request.name())
+                .build();
     }
 
     @Override

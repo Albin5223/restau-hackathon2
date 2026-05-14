@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 import fr.ultime.restoptim.domain.model.OrderSchedule;
+import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.model.order.Order;
 import fr.ultime.restoptim.domain.model.order.OrderId;
 
@@ -18,6 +19,8 @@ public interface Orders {
     List<Order> getActiveOrders();
 
     void closeOrder(OrderId orderId);
+
+    boolean isDishReferenced(DishId dishId);
 
     /**
      * Décale le placed_at de toutes les commandes actives.

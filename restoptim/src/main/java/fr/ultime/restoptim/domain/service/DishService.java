@@ -5,6 +5,7 @@ import fr.ultime.restoptim.domain.model.dish.CreateDishRequest;
 import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.dish.DishId;
 import fr.ultime.restoptim.domain.spi.Dishes;
+import fr.ultime.restoptim.domain.spi.Orders;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DishService implements GetDishesUseCase, GetDishByIdUseCase, CreateDishUseCase, UpdateDishUseCase, DeleteDishUseCase, ImportDishesUseCase {
     private final Dishes dishes;
+    private final Orders orders;
     private final Logger logger = LoggerFactory.getLogger(DishService.class);
 
 
@@ -46,6 +48,12 @@ public class DishService implements GetDishesUseCase, GetDishByIdUseCase, Create
     public void deleteDish(DishId dishId) {
         dishes.getDishById(dishId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Plat introuvable : " + dishId.value()));
+        if (orders.isDishReferenced(dishId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Impossible de supprimer ce plat : il est lie a une commande."
+            );
+        }
         dishes.delete(dishId);
     }
 

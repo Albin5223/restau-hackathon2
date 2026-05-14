@@ -9,7 +9,7 @@ import { RecipeGraphEditor } from "@/components/RecipeGraphEditor";
 import { allResources, computeSchedule, missingResources, validateRecipe } from "@/lib/recipes";
 import { formatDuration } from "@/lib/format";
 import type { Recipe, RecipeStep, ResourceTypeDto } from "@/lib/types";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 
 // ─── Simple form types ────────────────────────────────────────────────────────
 
@@ -204,7 +204,11 @@ function RecipeCard({
     try {
       await onDelete();
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Erreur lors de la suppression.");
+      if (err instanceof ApiError && err.status === 409) {
+        setDeleteError("Impossible d'effectuer la suppression.");
+      } else {
+        setDeleteError(err instanceof Error ? err.message : "Erreur lors de la suppression.");
+      }
       setDeleting(false);
       setConfirmDelete(false);
     }

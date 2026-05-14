@@ -125,6 +125,9 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const prevLogsCountRef = useRef(0);
+  const [logsAutoScroll, setLogsAutoScroll] = useState(true);
   const hasOngoingTasks = useMemo(
     () => ganttSteps.some((step) => step.endAt > Date.now()),
     [ganttSteps],
@@ -177,10 +180,15 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
     };
   }, []);
 
-  // Auto-scroll des logs vers le bas
+  // Auto-scroll des logs vers le bas (seulement si on est déjà en bas)
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [status.logs]);
+    const isNewLog = status.logs.length > prevLogsCountRef.current;
+    prevLogsCountRef.current = status.logs.length;
+    if (!isNewLog || !logsAutoScroll) return;
+    const el = logsContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [status.logs, logsAutoScroll]);
 
   async function handleStart() {
     if (hasOngoingTasks) return;
@@ -345,7 +353,17 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
               : `${status.logs.length} événement(s) enregistré(s)`}
           </p>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-3" style={{ maxHeight: "60vh" }}>
+        <div
+          ref={logsContainerRef}
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-3"
+          style={{ maxHeight: "60vh" }}
+          onScroll={() => {
+            const el = logsContainerRef.current;
+            if (!el) return;
+            const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            setLogsAutoScroll(distanceFromBottom < 24);
+          }}
+        >
           {status.logs.length === 0 ? (
             <p className="py-8 text-center text-sm text-zinc-400">
               Aucun événement pour l&apos;instant.

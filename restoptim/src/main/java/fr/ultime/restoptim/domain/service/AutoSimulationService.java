@@ -86,7 +86,7 @@ public class AutoSimulationService {
         currentSpeedMultiplier = speedMultiplier;
         active.set(true);
 
-        executor = Executors.newScheduledThreadPool(4);
+        executor = Executors.newSingleThreadScheduledExecutor();
 
         addLog("info", String.format("Démarrage — λ=%.1f arr./h, groupe moy.=%d pers., vitesse=%.2f×",
                 arrivalRatePerHour, avgPartySize, speedMultiplier));

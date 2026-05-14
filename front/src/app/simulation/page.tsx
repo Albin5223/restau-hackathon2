@@ -19,6 +19,12 @@ import type {
 } from "@/lib/types";
 
 type SimMode = "auto" | "manuel";
+type AutoSimParams = {
+  durationMin: number;
+  arrivalRatePerHour: number;
+  avgPartySize: number;
+  speedMultiplier: number;
+};
 
 // ── Conversion tâches backend → ScheduledStep ─────────────────────────────────
 
@@ -99,6 +105,7 @@ function LogLine({ log }: { log: AutoSimLog }) {
 }
 
 function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) => void }) {
+  const PARAMS_STORAGE_KEY = "autoSimParams";
   const { resourceTypes } = useResources();
   const [status, setStatus] = useState<AutoSimStatus>({ active: false, logs: [] });
   const [ganttSteps, setGanttSteps] = useState<ScheduledStep[]>([]);
@@ -115,7 +122,7 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
         .map((d) => d.name),
     [menu, resourceTypes],
   );
-  const [params, setParams] = useState({
+  const [params, setParams] = useState<AutoSimParams>({
     durationMin: 60,
     arrivalRatePerHour: 8,
     avgPartySize: 3,
@@ -128,10 +135,45 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const prevLogsCountRef = useRef(0);
   const [logsAutoScroll, setLogsAutoScroll] = useState(true);
+  const paramsLoadedRef = useRef(false);
+  const prevActiveRef = useRef(false);
   const hasOngoingTasks = useMemo(
     () => ganttSteps.some((step) => step.endAt > Date.now()),
     [ganttSteps],
   );
+
+  function isValidParams(value: unknown): value is AutoSimParams {
+    if (!value || typeof value !== "object") return false;
+    const v = value as Record<string, unknown>;
+    return [
+      v.durationMin,
+      v.arrivalRatePerHour,
+      v.avgPartySize,
+      v.speedMultiplier,
+    ].every((n) => typeof n === "number" && Number.isFinite(n));
+  }
+
+  function readStoredParams(): AutoSimParams | null {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(PARAMS_STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return isValidParams(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function persistParams(next: AutoSimParams) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(PARAMS_STORAGE_KEY, JSON.stringify(next));
+  }
+
+  function clearPersistedParams() {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(PARAMS_STORAGE_KEY);
+  }
 
   // Polling du statut de simulation
   useEffect(() => {
@@ -143,6 +185,16 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
         if (!cancelled) {
           setStatus(s);
           onStatusChange(s.active);
+          if (s.active && !paramsLoadedRef.current) {
+            const stored = readStoredParams();
+            if (stored) setParams(stored);
+            paramsLoadedRef.current = true;
+          }
+          if (!s.active && prevActiveRef.current) {
+            clearPersistedParams();
+            paramsLoadedRef.current = false;
+          }
+          prevActiveRef.current = s.active;
         }
       } catch {
         // ignore network errors during polling
@@ -195,6 +247,7 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
     setStarting(true);
     setError(null);
     try {
+      persistParams(params);
       await api.simulation.start(params);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur au démarrage.");
@@ -208,6 +261,7 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
     setError(null);
     try {
       await api.simulation.stop();
+      clearPersistedParams();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur à l'arrêt.");
     } finally {

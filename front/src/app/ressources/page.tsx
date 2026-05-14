@@ -28,8 +28,8 @@ export default function RessourcesPage() {
   const dishesUsingType = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const recipe of recipes) {
-      for (const step of recipe.tasks.etapes) {
-        for (const r of step.ressource) {
+      for (const step of recipe.tasks) {
+        for (const r of step.resources) {
           const list = map.get(r) ?? [];
           if (!list.includes(recipe.name)) list.push(recipe.name);
           map.set(r, list);
@@ -44,8 +44,8 @@ export default function RessourcesPage() {
     const known = new Set(resourceTypes.map((t) => t.name));
     const orphans = new Set<string>();
     for (const r of recipes) {
-      for (const step of r.tasks.etapes) {
-        for (const res of step.ressource) {
+      for (const step of r.tasks) {
+        for (const res of step.resources) {
           if (!known.has(res)) orphans.add(res);
         }
       }

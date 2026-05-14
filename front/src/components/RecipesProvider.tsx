@@ -13,7 +13,7 @@ import { api } from "@/lib/api";
 
 type RecipesContextValue = {
   recipes: Recipe[];
-  addRecipe: (name: string, etapes: RecipeStep[]) => Promise<Recipe>;
+  addRecipe: (name: string, tasks: RecipeStep[]) => Promise<Recipe>;
   updateRecipe: (id: number, name: string, etapes: RecipeStep[]) => Promise<Recipe>;
   deleteRecipe: (id: number) => Promise<void>;
   getRecipe: (name: string) => Recipe | undefined;
@@ -37,8 +37,8 @@ export function RecipesProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false; };
   }, []);
 
-  const addRecipe = useCallback(async (name: string, etapes: RecipeStep[]) => {
-    const created = await api.dishes.create(name, { etapes });
+  const addRecipe = useCallback(async (name: string, tasks: RecipeStep[]) => {
+    const created = await api.dishes.create(name, tasks);
     setRecipes((prev) => [...prev, created]);
     return created;
   }, []);
@@ -49,7 +49,7 @@ export function RecipesProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateRecipe = useCallback(async (id: number, name: string, etapes: RecipeStep[]) => {
-    const updated = await api.dishes.update(id, name, { etapes });
+    const updated = await api.dishes.update(id, name, etapes);
     setRecipes((prev) => prev.map((r) => (r.id === id ? updated : r)));
     return updated;
   }, []);

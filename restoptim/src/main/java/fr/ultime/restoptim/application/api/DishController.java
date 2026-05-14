@@ -42,14 +42,14 @@ public class DishController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public LongIdResponse create(@RequestBody CreateDishRequestDto body) {
+    public DishDto create(@RequestBody CreateDishRequestDto body) {
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le nom du plat est requis.");
         }
         if (body.tasks() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Les tâches du plat sont requises.");
         }
-        return new LongIdResponse(createDishUseCase.createDish(createDishRequestMapper.toDomain(body)).value());
+        return dishMapper.toDto(createDishUseCase.createDish(createDishRequestMapper.toDomain(body)));
     }
 
 

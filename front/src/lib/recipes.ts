@@ -84,7 +84,7 @@ export function validateRecipe(
     if (!(step.duration > 0))
       errors.push(`Étape ${pos} : la durée doit être > 0.`);
     for (const d of step.dependencies) {
-      if (d < 1 || d > steps.length)
+      if (d < 0 || d >= steps.length)
         errors.push(`Étape ${pos} : dépendance ${d} invalide.`);
       if (d === pos) errors.push(`Étape ${pos} : ne peut pas dépendre d'elle-même.`);
       if (d > pos)

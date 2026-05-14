@@ -12,10 +12,10 @@ import { api } from "@/lib/api";
 // ─── Simple form types ────────────────────────────────────────────────────────
 
 const KINDS = [
-  { value: "preparation", label: "Préparation" },
-  { value: "cuisson", label: "Cuisson" },
-  { value: "dressage", label: "Dressage" },
-  { value: "other", label: "Autre" },
+  { value: "PREPARATION", label: "Préparation" },
+  { value: "COOKING", label: "Cuisson" },
+  { value: "PLATING", label: "Dressage" },
+  { value: "OTHER", label: "Autre" },
 ];
 
 type DraftStep = {
@@ -33,17 +33,10 @@ const emptyDraft = (): DraftStep => ({
   uid: nextUid(),
   nom: "",
   resources: [],
-  kind: "preparation",
+  kind: "PREPARATION",
   duration: 5,
   dependencies: [],
 });
-
-// Map backend kind strings (english) back to form kind strings (french)
-function backendKindToForm(kind: string): string {
-  if (kind === "cooking") return "cuisson";
-  if (kind === "plating") return "dressage";
-  return kind;
-}
 
 function recipeToDraftSteps(tasks: RecipeStep[]): DraftStep[] {
   const uids = tasks.map(() => nextUid());
@@ -51,10 +44,10 @@ function recipeToDraftSteps(tasks: RecipeStep[]): DraftStep[] {
     uid: uids[i],
     nom: step.nom,
     resources: step.resources,
-    kind: backendKindToForm(step.kind ?? "other"),
+    kind: step.kind ?? "OTHER",
     duration: Math.max(1, Math.round(step.duration / 60)),
     dependencies: step.dependencies
-      .map((d) => uids[d - 1])
+      .map((d) => uids[d])
       .filter((u): u is string => u !== undefined),
   }));
 }
@@ -588,7 +581,7 @@ function RecipeForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const uidToIndex = new Map(steps.map((s, i) => [s.uid, i + 1]));
+    const uidToIndex = new Map(steps.map((s, i) => [s.uid, i]));
     const etapes: RecipeStep[] = steps.map((s) => ({
       nom: s.nom.trim(),
       resources: s.resources,

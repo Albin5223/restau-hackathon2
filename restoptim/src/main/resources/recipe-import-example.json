@@ -1,72 +1,60 @@
 [
   {
     "name": "Soupe à l'oignon",
-    "tasks": {
-      "etapes": [
-        { "nom": "Émincer les oignons",     "ressource": ["commis"], "kind": "preparation", "duree": 300, "deps": [] },
-        { "nom": "Caraméliser les oignons", "ressource": ["plaque"], "kind": "cooking",     "duree": 1200, "deps": [1] },
-        { "nom": "Mijoter le bouillon",     "ressource": ["plaque"], "kind": "cooking",     "duree": 600,  "deps": [2] },
-        { "nom": "Gratiner au four",        "ressource": ["four"],   "kind": "cooking",     "duree": 300,  "deps": [3] },
-        { "nom": "Dresser l'assiette",      "ressource": ["chef"],   "kind": "plating",    "duree": 60,   "deps": [4] }
+    "tasks": [
+        { "nom": "Émincer les oignons",     "resources": ["commis"], "kind": "preparation", "duration": 300, "dependencies": [] },
+        { "nom": "Caraméliser les oignons", "resources": ["plaque"], "kind": "cooking",     "duration": 1200, "dependencies": [0] },
+        { "nom": "Mijoter le bouillon",     "resources": ["plaque"], "kind": "cooking",     "duration": 600,  "dependencies": [1] },
+        { "nom": "Gratiner au four",        "resources": ["four"],   "kind": "cooking",     "duration": 300,  "dependencies": [2] },
+        { "nom": "Dresser l'assiette",      "resources": ["chef"],   "kind": "plating",    "duration": 60,   "dependencies": [3] }
       ]
-    }
   },
   {
     "name": "Tartare de bœuf",
-    "tasks": {
-      "etapes": [
-        { "nom": "Hacher la viande",      "ressource": ["commis"], "kind": "preparation", "duree": 360, "deps": [] },
-        { "nom": "Préparer la garniture", "ressource": ["commis"], "kind": "preparation", "duree": 180, "deps": [] },
-        { "nom": "Assaisonner le tartare","ressource": ["chef"],   "kind": "preparation", "duree": 120, "deps": [1, 2] },
-        { "nom": "Dresser l'assiette",    "ressource": ["chef"],   "kind": "plating",    "duree": 90,  "deps": [3] }
+    "tasks": [
+        { "nom": "Hacher la viande",      "resources": ["commis"], "kind": "preparation", "duration": 360, "dependencies": [] },
+        { "nom": "Préparer la garniture", "resources": ["commis"], "kind": "preparation", "duration": 180, "dependencies": [] },
+        { "nom": "Assaisonner le tartare","resources": ["chef"],   "kind": "preparation", "duration": 120, "dependencies": [0, 1] },
+        { "nom": "Dresser l'assiette",    "resources": ["chef"],   "kind": "plating",    "duration": 90,  "dependencies": [2] }
       ]
-    }
   },
   {
     "name": "Saumon en papillote",
-    "tasks": {
-      "etapes": [
-        { "nom": "Préparer le saumon",     "ressource": ["commis"], "kind": "preparation", "duree": 240, "deps": [] },
-        { "nom": "Préparer la julienne",   "ressource": ["commis"], "kind": "preparation", "duree": 300, "deps": [] },
-        { "nom": "Monter la papillote",    "ressource": ["chef"],   "kind": "preparation", "duree": 120, "deps": [1, 2] },
-        { "nom": "Cuire au four",          "ressource": ["four"],   "kind": "cooking",     "duree": 720, "deps": [3] },
-        { "nom": "Dresser l'assiette",     "ressource": ["chef"],   "kind": "plating",    "duree": 90,  "deps": [4] }
+    "tasks": [
+        { "nom": "Préparer le saumon",     "resources": ["commis"], "kind": "preparation", "duration": 240, "dependencies": [] },
+        { "nom": "Préparer la julienne",   "resources": ["commis"], "kind": "preparation", "duration": 300, "dependencies": [] },
+        { "nom": "Monter la papillote",    "resources": ["chef"],   "kind": "preparation", "duration": 120, "dependencies": [0, 1] },
+        { "nom": "Cuire au four",          "resources": ["four"],   "kind": "cooking",     "duration": 720, "dependencies": [2] },
+        { "nom": "Dresser l'assiette",     "resources": ["chef"],   "kind": "plating",    "duration": 90,  "dependencies": [3] }
       ]
-    }
   },
   {
     "name": "Crème brûlée",
-    "tasks": {
-      "etapes": [
-        { "nom": "Préparer l'appareil",   "ressource": ["commis"], "kind": "preparation", "duree": 300, "deps": [] },
-        { "nom": "Cuire au bain-marie",   "ressource": ["four"],   "kind": "cooking",     "duree": 2400, "deps": [1] },
-        { "nom": "Refroidir",             "ressource": [],         "kind": "other",       "duree": 3600, "deps": [2] },
-        { "nom": "Caraméliser au chalumeau", "ressource": ["chef"],"kind": "plating",    "duree": 60,   "deps": [3] }
+    "tasks": [
+        { "nom": "Préparer l'appareil",   "resources": ["commis"], "kind": "preparation", "duration": 300, "dependencies": [] },
+        { "nom": "Cuire au bain-marie",   "resources": ["four"],   "kind": "cooking",     "duration": 2400, "dependencies": [0] },
+        { "nom": "Refroidir",             "resources": [],         "kind": "other",       "duration": 3600, "dependencies": [1] },
+        { "nom": "Caraméliser au chalumeau", "resources": ["chef"],"kind": "plating",    "duration": 60,   "dependencies": [2] }
       ]
-    }
   },
   {
     "name": "Pavé de cabillaud beurre blanc",
-    "tasks": {
-      "etapes": [
-        { "nom": "Préparer le cabillaud",  "ressource": ["commis"], "kind": "preparation", "duree": 180, "deps": [] },
-        { "nom": "Préparer le beurre blanc","ressource": ["commis"],"kind": "preparation", "duree": 240, "deps": [] },
-        { "nom": "Saisir le cabillaud",    "ressource": ["plaque"], "kind": "cooking",     "duree": 360, "deps": [1] },
-        { "nom": "Monter le beurre blanc", "ressource": ["plaque"], "kind": "cooking",     "duree": 180, "deps": [2] },
-        { "nom": "Dresser l'assiette",     "ressource": ["chef"],   "kind": "plating",    "duree": 90,  "deps": [3, 4] }
+    "tasks": [
+        { "nom": "Préparer le cabillaud",  "resources": ["commis"], "kind": "preparation", "duration": 180, "dependencies": [] },
+        { "nom": "Préparer le beurre blanc","resources": ["commis"],"kind": "preparation", "duration": 240, "dependencies": [] },
+        { "nom": "Saisir le cabillaud",    "resources": ["plaque"], "kind": "cooking",     "duration": 360, "dependencies": [0] },
+        { "nom": "Monter le beurre blanc", "resources": ["plaque"], "kind": "cooking",     "duration": 180, "dependencies": [1] },
+        { "nom": "Dresser l'assiette",     "resources": ["chef"],   "kind": "plating",    "duration": 90,  "dependencies": [2, 3] }
       ]
-    }
   },
   {
     "name": "Tarte tatin",
-    "tasks": {
-      "etapes": [
-        { "nom": "Préparer la pâte",       "ressource": ["commis"], "kind": "preparation", "duree": 600, "deps": [] },
-        { "nom": "Caraméliser les pommes", "ressource": ["plaque"], "kind": "cooking",     "duree": 480, "deps": [] },
-        { "nom": "Assembler la tarte",     "ressource": ["chef"],   "kind": "preparation", "duree": 120, "deps": [1, 2] },
-        { "nom": "Cuire au four",          "ressource": ["four"],   "kind": "cooking",     "duree": 1500, "deps": [3] },
-        { "nom": "Démouler et dresser",    "ressource": ["chef"],   "kind": "plating",    "duree": 120, "deps": [4] }
+    "tasks": [
+        { "nom": "Préparer la pâte",       "resources": ["commis"], "kind": "preparation", "duration": 600, "dependencies": [] },
+        { "nom": "Caraméliser les pommes", "resources": ["plaque"], "kind": "cooking",     "duration": 480, "dependencies": [] },
+        { "nom": "Assembler la tarte",     "resources": ["chef"],   "kind": "preparation", "duration": 120, "dependencies": [0, 1] },
+        { "nom": "Cuire au four",          "resources": ["four"],   "kind": "cooking",     "duration": 1500, "dependencies": [2] },
+        { "nom": "Démouler et dresser",    "resources": ["chef"],   "kind": "plating",    "duration": 120, "dependencies": [3] }
       ]
     }
-  }
 ]

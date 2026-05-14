@@ -21,7 +21,7 @@ public class TaskMapper {
         return new Task(
                 TaskId.from((long) index),
                 taskDto.nom(),
-                taskTypeMapper.toDomain(taskDto.type()),
+                taskTypeMapper.toDomain(taskDto.kind()),
                 taskDto.resources().stream().map(ResourceType::from).toList(),
                 taskDto.duration(),
                 taskDto.dependencies().stream().map(TaskId::from).toList()

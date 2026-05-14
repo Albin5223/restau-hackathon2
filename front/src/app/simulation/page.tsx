@@ -125,6 +125,10 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const hasOngoingTasks = useMemo(
+    () => ganttSteps.some((step) => step.endAt > Date.now()),
+    [ganttSteps],
+  );
 
   // Polling du statut de simulation
   useEffect(() => {
@@ -179,6 +183,7 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
   }, [status.logs]);
 
   async function handleStart() {
+    if (hasOngoingTasks) return;
     setStarting(true);
     setError(null);
     try {
@@ -287,12 +292,25 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
           </p>
         ) : null}
 
+        {!status.active && hasOngoingTasks ? (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            Impossible de lancer la simulation automatique, veuillez{" "}
+            <Link
+              href="/salle"
+              className="font-semibold underline decoration-dotted hover:text-red-700 dark:hover:text-red-200"
+            >
+              libérer toutes les tables
+            </Link>
+            .
+          </p>
+        ) : null}
+
         <div className="mt-6 space-y-2">
           {!status.active ? (
             <button
               onClick={handleStart}
-              disabled={starting}
-              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              disabled={starting || hasOngoingTasks}
+              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
               {starting ? "Démarrage…" : "Lancer la simulation"}
             </button>

@@ -47,6 +47,13 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ name, tasks }),
       }),
+    update: (id: number, name: string, tasks: Recipe["tasks"]) =>
+      request<Recipe>(`/api/dishes/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, tasks }),
+      }),
+    delete: (id: number) =>
+      request<void>(`/api/dishes/${id}`, { method: "DELETE" }),
     importBatch: async (dishList: Array<{ name: string; tasks: Recipe["tasks"] }>) => {
       const res = await fetch(`${API}/api/dishes/import`, {
         method: "POST",

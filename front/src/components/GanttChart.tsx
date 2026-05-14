@@ -127,10 +127,17 @@ export function GanttChart({ steps }: Props) {
     );
   }, [steps]);
 
-  const tickCount = Math.max(Math.floor(totalMs / 60_000 / 2), 2);
-  const ticks = Array.from({ length: tickCount + 1 }, (_, i) =>
-    baseTime + (i / tickCount) * totalMs,
-  );
+  const ticks = useMemo(() => {
+    const MINUTE_INTERVALS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 300];
+    const MAX_TICKS = 12;
+    const intervalMs =
+      (MINUTE_INTERVALS.find((m) => totalMs / (m * 60_000) <= MAX_TICKS) ?? 300) *
+      60_000;
+    const firstTick = Math.ceil(baseTime / intervalMs) * intervalMs;
+    const result: number[] = [];
+    for (let ts = firstTick; ts <= endTime; ts += intervalMs) result.push(ts);
+    return result;
+  }, [baseTime, endTime, totalMs]);
 
   const nowPct = ((now - baseTime) / totalMs) * 100;
   const showNow = nowPct >= 0 && nowPct <= 100;

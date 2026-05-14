@@ -692,6 +692,23 @@ export default function SimulationPage() {
   const [mode, setMode] = useState<SimMode>("manuel");
   const [isAutoActive, setIsAutoActive] = useState(false);
 
+  // Poll status even when on the manual tab so the warning appears immediately
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const s = await api.simulation.status();
+        if (!cancelled) setIsAutoActive(s.active);
+      } catch {}
+    }
+    poll();
+    const id = setInterval(poll, 2_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   return (
     <>
       <PageHeader

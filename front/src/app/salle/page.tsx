@@ -49,6 +49,7 @@ export default function SallePage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [confirmingReleaseAll, setConfirmingReleaseAll] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -89,6 +90,13 @@ export default function SallePage() {
     [load],
   );
 
+  const clearAllTables = useCallback(async () => {
+    const occupied = tables.filter((t) => t.status !== "libre");
+    await Promise.all(occupied.map((t) => api.tables.release(t.id)));
+    setSelectedId(null);
+    await load();
+  }, [tables, load]);
+
   const selectedTasks = useMemo(() => {
     if (!selected) return [];
     return ganttTasks
@@ -106,16 +114,49 @@ export default function SallePage() {
         title="Salle"
         subtitle={`Plan en temps réel — ${occupees}/${tables.length} occupées · ${enPrepa} en préparation`}
         actions={
-          lastUpdate ? (
-            <span className="text-xs text-zinc-400">
-              Actualisé à{" "}
-              {lastUpdate.toLocaleTimeString("fr-FR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-            </span>
-          ) : undefined
+          <div className="flex items-center gap-3">
+            {lastUpdate ? (
+              <span className="text-xs text-zinc-400">
+                Actualisé à{" "}
+                {lastUpdate.toLocaleTimeString("fr-FR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </span>
+            ) : null}
+            {tables.some((t) => t.status !== "libre") ? (
+              confirmingReleaseAll ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-amber-700 dark:text-amber-300">
+                    Libérer toutes les tables ?
+                  </span>
+                  <button
+                    onClick={() => {
+                      setConfirmingReleaseAll(false);
+                      clearAllTables();
+                    }}
+                    className="rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+                  >
+                    Confirmer
+                  </button>
+                  <button
+                    onClick={() => setConfirmingReleaseAll(false)}
+                    className="rounded-md border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmingReleaseAll(true)}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                >
+                  Libérer toutes les tables
+                </button>
+              )
+            ) : null}
+          </div>
         }
       />
 
@@ -237,6 +278,38 @@ function SelectedTablePanel({
         </span>
       </header>
 
+      {table.status !== "libre" ? (
+        confirmingClear ? (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
+            <p className="mb-3 text-xs text-amber-800 dark:text-amber-300">
+              Les plats sont encore en cours de préparation. Libérer la table
+              annulera le planning en cuisine. Confirmer ?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleConfirm}
+                className="flex-1 rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+              >
+                Confirmer
+              </button>
+              <button
+                onClick={() => setConfirmingClear(false)}
+                className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={handleClearClick}
+            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Libérer la table
+          </button>
+        )
+      ) : null}
+
       {window ? (
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
@@ -312,40 +385,6 @@ function SelectedTablePanel({
           Aucune commande active (planning vide ou déjà servie).
         </p>
       ) : null}
-
-      <div className="mt-auto flex flex-col gap-2">
-        {table.status !== "libre" ? (
-          confirmingClear ? (
-            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
-              <p className="mb-3 text-xs text-amber-800 dark:text-amber-300">
-                Les plats sont encore en cours de préparation. Libérer la table
-                annulera le planning en cuisine. Confirmer ?
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleConfirm}
-                  className="flex-1 rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
-                >
-                  Confirmer
-                </button>
-                <button
-                  onClick={() => setConfirmingClear(false)}
-                  className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
-                >
-                  Annuler
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={handleClearClick}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
-            >
-              Libérer la table
-            </button>
-          )
-        ) : null}
-      </div>
     </div>
   );
 }

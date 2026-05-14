@@ -13,12 +13,6 @@ DELETE
 FROM resource_types;
 DELETE
 FROM recipe_documents;
-DELETE
-FROM sqlite_sequence
-WHERE name IN (
-               'commande_items', 'commandes', 'restaurant_tables',
-               'resources', 'resource_types', 'recipe_documents'
-    );
 
 -- ─── Ressources ───────────────────────────────────────────────────────────────
 

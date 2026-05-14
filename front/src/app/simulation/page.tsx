@@ -31,7 +31,7 @@ function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
   if (task.resourceNames.length === 0) {
     return [{
       id: task.id,
-      orderId: task.commandeId,
+      orderId: task.orderId,
       tableNumber: task.tableNumber,
       recipeName: task.dishName,
       stepName: task.taskName,
@@ -46,7 +46,7 @@ function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
 
   return task.resourceNames.map((name, idx) => ({
     id: idx === 0 ? task.id : `${task.id}__r${idx}`,
-    orderId: task.commandeId,
+    orderId: task.orderId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
     stepName: task.taskName,
@@ -389,11 +389,11 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
       .gantt()
       .then((res) => {
         if (cancelled) return;
-        const myTasks = res.tasks.filter((t) => t.commandeId === result.commandeId);
+        const myTasks = res.tasks.filter((t) => t.orderId === result.orderId);
         if (myTasks.length === 0) return; // commande clôturée → on garde tel quel
         const serviceTimeAt = Math.max(...myTasks.map((t) => t.endAt));
         setResult({
-          commandeId: result.commandeId,
+          orderId: result.orderId,
           tableNumber: result.tableNumber,
           serviceTimeAt,
           scheduledTasks: myTasks,
@@ -403,9 +403,9 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
     return () => {
       cancelled = true;
     };
-    // On dépend seulement de shiftVersion et de result.commandeId pour éviter une boucle.
+    // On dépend seulement de shiftVersion et de result.orderId pour éviter une boucle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shiftVersion, result?.commandeId]);
+  }, [shiftVersion, result?.orderId]);
 
   // Indisponibilité par plat : id → ressources manquantes
   const unavailableById = useMemo(() => {

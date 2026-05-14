@@ -18,4 +18,13 @@ public interface Orders {
     List<Order> getActiveOrders();
 
     void closeOrder(OrderId orderId);
+
+    /**
+     * Décale le placed_at de toutes les commandes actives.
+     *
+     * @param deltaMs valeur ajoutée à placed_at. Négatif = la commande paraît
+     *                « plus ancienne » (équivalent à avancer le temps présent).
+     * @return nombre de commandes mises à jour.
+     */
+    int shiftActiveOrdersPlacedAt(long deltaMs);
 }

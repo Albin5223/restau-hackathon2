@@ -1,4 +1,4 @@
-import type { Recipe, RecipeStep } from "./types";
+import type { Recipe, RecipeStep, ResourceTypeDto } from "./types";
 
 // Compute earliest start/end for each step given the dependency DAG.
 // `deps` are 1-based indices into etapes (matching the DB seed format).
@@ -104,3 +104,16 @@ export function allResources(recipe: Recipe): string[] {
   }
   return [...set];
 }
+
+/**
+ * Liste des ressources requises par la recette dont la capacité est nulle
+ * (type inconnu ou 0 instance). Renvoie [] si le plat est entièrement servable.
+ */
+export function missingResources(
+  recipe: Recipe,
+  resourceTypes: ResourceTypeDto[],
+): string[] {
+  const capacities = new Map(resourceTypes.map((t) => [t.name, t.capacity]));
+  return allResources(recipe).filter((r) => (capacities.get(r) ?? 0) <= 0);
+}
+

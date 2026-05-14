@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { GanttChart } from "@/components/GanttChart";
+import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
 import type { ScheduledStep, ScheduledStepStatus, BackendGanttTask } from "@/lib/types";
 
@@ -51,6 +52,7 @@ function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
 }
 
 export default function CuisinePage() {
+  const { shiftVersion } = useTime();
   const [steps, setSteps] = useState<ScheduledStep[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
@@ -69,12 +71,13 @@ export default function CuisinePage() {
     }
 
     load();
-    const id = setInterval(load, 10_000);
+    const id = setInterval(load, 3_000);
     return () => {
       mounted = false;
       clearInterval(id);
     };
-  }, []);
+    // shiftVersion → relance immédiate du fetch après un voyage temporel
+  }, [shiftVersion]);
 
   const upcomingAlerts = steps
     .filter((s) => s.status !== "termine")

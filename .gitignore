@@ -4,4 +4,4 @@
 
 # Project
 restoptim/.mvn/*
-restoptim/data/restoptim.db
+restoptim/data/*

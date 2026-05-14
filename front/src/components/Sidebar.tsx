@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/api";
+import { useRecipes } from "@/components/RecipesProvider";
+import { useResources } from "@/components/ResourcesProvider";
+import { missingResources } from "@/lib/recipes";
 
 const links = [
   { href: "/", label: "Vue d'ensemble" },
@@ -11,12 +14,21 @@ const links = [
   { href: "/salle", label: "Salle" },
   //{ href: "/tables", label: "Tables" },
   { href: "/menu", label: "Menu" },
+  { href: "/ressources", label: "Ressources" },
   { href: "/simulation", label: "Simulation" },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { recipes } = useRecipes();
+  const { resourceTypes } = useResources();
   const [autoSimActive, setAutoSimActive] = useState(false);
+
+  const unavailableCount = useMemo(
+    () =>
+      recipes.filter((r) => missingResources(r, resourceTypes).length > 0).length,
+    [recipes, resourceTypes],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -65,9 +77,21 @@ export function Sidebar() {
                   : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
               }`}
             >
-              {link.label}
+              <span>{link.label}</span>
               {link.href === "/simulation" && autoSimActive ? (
                 <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-500" />
+              ) : null}
+              {link.href === "/ressources" && unavailableCount > 0 ? (
+                <span
+                  title={`${unavailableCount} plat(s) indisponible(s)`}
+                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    active
+                      ? "bg-amber-200 text-amber-900"
+                      : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                  }`}
+                >
+                  {unavailableCount}
+                </span>
               ) : null}
             </Link>
           );

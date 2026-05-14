@@ -44,6 +44,7 @@ public class AutoSimulationService {
     private final Dishes dishes;
     private final Orders orders;
     private final OrderService orderService;
+    private final TimeShiftService timeShiftService;
 
     private final AtomicBoolean active = new AtomicBoolean(false);
     private final LinkedList<AutoSimulationLog> logs = new LinkedList<>();
@@ -52,11 +53,13 @@ public class AutoSimulationService {
     private final Random random = new Random();
     private final Set<OrderId> servedOrderIds = ConcurrentHashMap.newKeySet();
 
-    public AutoSimulationService(Tables tables, Dishes dishes, Orders orders, OrderService orderService) {
+    public AutoSimulationService(Tables tables, Dishes dishes, Orders orders,
+                                 OrderService orderService, TimeShiftService timeShiftService) {
         this.tables = tables;
         this.dishes = dishes;
         this.orders = orders;
         this.orderService = orderService;
+        this.timeShiftService = timeShiftService;
     }
 
     public boolean isActive() {
@@ -77,6 +80,9 @@ public class AutoSimulationService {
             logs.clear();
         }
         servedOrderIds.clear();
+        // L'auto-sim travaille en temps réel : on annule tout décalage manuel
+        // pour éviter un mélange incohérent des deux mécanismes.
+        timeShiftService.reset();
         currentSpeedMultiplier = speedMultiplier;
         active.set(true);
 
@@ -110,6 +116,12 @@ public class AutoSimulationService {
         ScheduledExecutorService exec = executor;
         if (exec != null) {
             exec.shutdownNow();
+            try {
+                // Attendre la fin des tâches en cours pour éviter qu'elles écrasent releaseAllTables
+                exec.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             executor = null;
         }
 
@@ -235,6 +247,8 @@ public class AutoSimulationService {
                 .findFirst()
                 .ifPresent(table -> {
                     try {
+                        // Ne pas servir si la simulation s'est arrêtée entre-temps
+                        if (!active.get()) return;
                         tables.save(new Table(table.id(), table.number(), table.seats(),
                                 TableStatus.SERVIE, table.partySize(), table.orderId()));
                         addLog("served", "Table " + table.number() + " servie — les clients mangent");

@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { GanttChart } from "@/components/GanttChart";
+import { useResources } from "@/components/ResourcesProvider";
+import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
 import type { AutoSimLog, AutoSimStatus } from "@/lib/api";
+import { missingResources } from "@/lib/recipes";
 import type {
   BackendCommandeResult,
+  BackendGanttTask,
   BackendTable,
   Recipe,
   ScheduledStep,
@@ -14,6 +19,45 @@ import type {
 } from "@/lib/types";
 
 type SimMode = "auto" | "manuel";
+
+// ── Conversion tâches backend → ScheduledStep ─────────────────────────────────
+
+function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
+  const now = Date.now();
+  let status: ScheduledStepStatus = "a_venir";
+  if (task.endAt < now) status = "termine";
+  else if (task.startAt <= now) status = "en_cours";
+
+  if (task.resourceNames.length === 0) {
+    return [{
+      id: task.id,
+      orderId: task.commandeId,
+      tableNumber: task.tableNumber,
+      recipeName: task.dishName,
+      stepName: task.taskName,
+      kind: task.kind,
+      resourceId: `__no_resource__:${task.id}`,
+      resourceLabel: "Sans ressource",
+      startAt: task.startAt,
+      endAt: task.endAt,
+      status,
+    }];
+  }
+
+  return task.resourceNames.map((name, idx) => ({
+    id: idx === 0 ? task.id : `${task.id}__r${idx}`,
+    orderId: task.commandeId,
+    tableNumber: task.tableNumber,
+    recipeName: task.dishName,
+    stepName: task.taskName,
+    kind: task.kind,
+    resourceId: name,
+    resourceLabel: name,
+    startAt: task.startAt,
+    endAt: task.endAt,
+    status,
+  }));
+}
 
 // ── Mode automatique ──────────────────────────────────────────────────────────
 
@@ -55,7 +99,22 @@ function LogLine({ log }: { log: AutoSimLog }) {
 }
 
 function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) => void }) {
+  const { resourceTypes } = useResources();
   const [status, setStatus] = useState<AutoSimStatus>({ active: false, logs: [] });
+  const [ganttSteps, setGanttSteps] = useState<ScheduledStep[]>([]);
+  const [menu, setMenu] = useState<Recipe[]>([]);
+
+  useEffect(() => {
+    api.dishes.list().then(setMenu).catch(() => {});
+  }, []);
+
+  const unavailableMenuNames = useMemo(
+    () =>
+      menu
+        .filter((d) => missingResources(d, resourceTypes).length > 0)
+        .map((d) => d.name),
+    [menu, resourceTypes],
+  );
   const [params, setParams] = useState({
     durationMin: 60,
     arrivalRatePerHour: 8,
@@ -67,7 +126,7 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
   const [error, setError] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // Polling du statut
+  // Polling du statut de simulation
   useEffect(() => {
     let cancelled = false;
 
@@ -90,6 +149,29 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
       clearInterval(id);
     };
   }, [onStatusChange]);
+
+  // Polling du Gantt (toutes les 3 secondes)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function pollGantt() {
+      try {
+        const res = await api.cuisine.gantt();
+        if (!cancelled) {
+          setGanttSteps(res.tasks.flatMap(toScheduledSteps));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    pollGantt();
+    const id = setInterval(pollGantt, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   // Auto-scroll des logs vers le bas
   useEffect(() => {
@@ -121,6 +203,7 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
   }
 
   return (
+    <div className="space-y-6">
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
       {/* Panneau de paramètres */}
       <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
@@ -176,6 +259,27 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
               : "Durées réelles"}
           </p>
         </div>
+
+        {!status.active && unavailableMenuNames.length > 0 ? (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950">
+            <p className="font-semibold text-amber-900 dark:text-amber-100">
+              {unavailableMenuNames.length} plat
+              {unavailableMenuNames.length > 1 ? "s" : ""} du menu
+              indisponible{unavailableMenuNames.length > 1 ? "s" : ""}
+            </p>
+            <p className="mt-1 text-amber-800 dark:text-amber-300">
+              Les commandes tirant ces plats au hasard seront refusées (log
+              « erreur »). Ajoutez les ressources nécessaires pour une simulation
+              fluide.
+            </p>
+            <Link
+              href="/ressources"
+              className="mt-1.5 inline-block font-semibold text-amber-900 underline decoration-dotted hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100"
+            >
+              → Page Ressources
+            </Link>
+          </div>
+        ) : null}
 
         {error ? (
           <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
@@ -239,49 +343,25 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
         </div>
       </section>
     </div>
+
+    {/* Gantt de cuisine en temps réel */}
+    {ganttSteps.length > 0 ? (
+      <section>
+        <h2 className="mb-3 text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          Planning cuisine en temps réel
+        </h2>
+        <GanttChart steps={ganttSteps} />
+      </section>
+    ) : null}
+    </div>
   );
 }
 
 // ── Mode manuel ───────────────────────────────────────────────────────────────
 
-function toScheduledSteps(task: BackendCommandeResult["scheduledTasks"][0]): ScheduledStep[] {
-  const now = Date.now();
-  let status: ScheduledStepStatus = "a_venir";
-  if (task.endAt < now) status = "termine";
-  else if (task.startAt <= now) status = "en_cours";
-
-  if (task.resourceNames.length === 0) {
-    return [{
-      id: task.id,
-      orderId: task.orderId,
-      tableNumber: task.tableNumber,
-      recipeName: task.dishName,
-      stepName: task.taskName,
-      kind: task.kind,
-      resourceId: `__no_resource__:${task.id}`,
-      resourceLabel: "Sans ressource",
-      startAt: task.startAt,
-      endAt: task.endAt,
-      status,
-    }];
-  }
-
-  return task.resourceNames.map((name, idx) => ({
-    id: idx === 0 ? task.id : `${task.id}__r${idx}`,
-    orderId: task.orderId,
-    tableNumber: task.tableNumber,
-    recipeName: task.dishName,
-    stepName: task.taskName,
-    kind: task.kind,
-    resourceId: name,
-    resourceLabel: name,
-    startAt: task.startAt,
-    endAt: task.endAt,
-    status,
-  }));
-}
-
 function ManualSimulation({ blocked }: { blocked: boolean }) {
+  const { resourceTypes } = useResources();
+  const { shiftVersion } = useTime();
   const [tables, setTables] = useState<BackendTable[]>([]);
   const [dishes, setDishes] = useState<Recipe[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
@@ -299,6 +379,56 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
       })
       .catch(console.error);
   }, []);
+
+  // Après un voyage temporel, les horaires de la commande affichée sont
+  // décalés en base ; on rafraîchit le résultat depuis le Gantt courant.
+  useEffect(() => {
+    if (!result) return;
+    let cancelled = false;
+    api.cuisine
+      .gantt()
+      .then((res) => {
+        if (cancelled) return;
+        const myTasks = res.tasks.filter((t) => t.commandeId === result.commandeId);
+        if (myTasks.length === 0) return; // commande clôturée → on garde tel quel
+        const serviceTimeAt = Math.max(...myTasks.map((t) => t.endAt));
+        setResult({
+          commandeId: result.commandeId,
+          tableNumber: result.tableNumber,
+          serviceTimeAt,
+          scheduledTasks: myTasks,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // On dépend seulement de shiftVersion et de result.commandeId pour éviter une boucle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shiftVersion, result?.commandeId]);
+
+  // Indisponibilité par plat : id → ressources manquantes
+  const unavailableById = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const d of dishes) {
+      const m = missingResources(d, resourceTypes);
+      if (m.length > 0) map.set(d.id, m);
+    }
+    return map;
+  }, [dishes, resourceTypes]);
+
+  const selectedUnavailable = useMemo(
+    () =>
+      dishSelections
+        .filter((id): id is number => id !== null)
+        .map((id) => ({ id, dish: dishes.find((d) => d.id === id) }))
+        .filter(({ id }) => unavailableById.has(id))
+        .map(({ dish, id }) => ({
+          name: dish?.name ?? `#${id}`,
+          missing: unavailableById.get(id) ?? [],
+        })),
+    [dishSelections, dishes, unavailableById],
+  );
 
   if (blocked) {
     return (
@@ -449,27 +579,64 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
             </p>
           ) : (
             <div className="space-y-3">
-              {dishSelections.map((selected, i) => (
-                <label key={i} className="block">
-                  <span className="text-xs font-medium text-zinc-500">
-                    Couvert {i + 1}
-                  </span>
-                  <select
-                    value={selected ?? ""}
-                    onChange={(e) =>
-                      setDish(i, e.target.value ? Number(e.target.value) : null)
-                    }
-                    className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                  >
-                    <option value="">— Sélectionner un plat —</option>
-                    {dishes.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
+              {dishSelections.map((selected, i) => {
+                const isUnavail =
+                  selected !== null && unavailableById.has(selected);
+                return (
+                  <label key={i} className="block">
+                    <span className="text-xs font-medium text-zinc-500">
+                      Couvert {i + 1}
+                    </span>
+                    <select
+                      value={selected ?? ""}
+                      onChange={(e) =>
+                        setDish(i, e.target.value ? Number(e.target.value) : null)
+                      }
+                      className={`mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm dark:bg-zinc-900 ${
+                        isUnavail
+                          ? "border-amber-400 text-amber-900 dark:border-amber-700 dark:text-amber-200"
+                          : "border-zinc-300 dark:border-zinc-700"
+                      }`}
+                    >
+                      <option value="">— Sélectionner un plat —</option>
+                      {dishes.map((d) => {
+                        const unavail = unavailableById.has(d.id);
+                        return (
+                          <option key={d.id} value={d.id} disabled={unavail}>
+                            {d.name}
+                            {unavail
+                              ? ` — indispo. (${(unavailableById.get(d.id) ?? []).join(", ")})`
+                              : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                );
+              })}
+
+              {selectedUnavailable.length > 0 ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950">
+                  <p className="font-semibold text-amber-900 dark:text-amber-100">
+                    {selectedUnavailable.length} plat
+                    {selectedUnavailable.length > 1 ? "s" : ""} indisponible
+                    {selectedUnavailable.length > 1 ? "s" : ""} dans la sélection
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-amber-800 dark:text-amber-300">
+                    {selectedUnavailable.map((u, idx) => (
+                      <li key={idx}>
+                        • {u.name} — manque : {u.missing.join(", ")}
+                      </li>
                     ))}
-                  </select>
-                </label>
-              ))}
+                  </ul>
+                  <Link
+                    href="/ressources"
+                    className="mt-1.5 inline-block font-semibold text-amber-900 underline decoration-dotted hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100"
+                  >
+                    → Ajouter les ressources manquantes
+                  </Link>
+                </div>
+              ) : null}
 
               {error ? (
                 <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
@@ -479,7 +646,11 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
 
               <button
                 onClick={placeOrder}
-                disabled={loading || !selectedTableId}
+                disabled={
+                  loading ||
+                  !selectedTableId ||
+                  selectedUnavailable.length > 0
+                }
                 className="mt-2 w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
                 {loading ? "Planification en cours…" : "Passer la commande"}

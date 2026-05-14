@@ -39,7 +39,7 @@ public class CreateDishControllerIT {
                                     "resources" :["resource1"],
                                     "duration" : 123,
                                     "dependencies":[],
-                                    "type": "COOKING"
+                                    "kind": "COOKING"
                                 }
                             ]
                         }

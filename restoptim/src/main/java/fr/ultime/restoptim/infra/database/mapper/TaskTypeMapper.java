@@ -14,9 +14,7 @@ public class TaskTypeMapper {
             case "COOKING" -> TaskType.COOKING;
             case "PLATING" -> TaskType.PLATING;
             case "PREPARATION" -> TaskType.PREPARATION;
-            case "CUISSON" -> TaskType.COOKING;
-            case "DRESSAGE" -> TaskType.PLATING;
-            default ->  TaskType.OTHER;
+            default -> TaskType.OTHER;
         };
     }
 }

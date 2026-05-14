@@ -55,7 +55,7 @@ public class GetDishesControllerIT {
                 .andExpect(jsonPath("$[0].tasks").isArray())
                 .andExpect(jsonPath("$[0].tasks", hasSize(1)))
                 .andExpect(jsonPath("$[0].tasks[0].nom").value("cookTask1"))
-                .andExpect(jsonPath("$[0].tasks[0].type").value("COOKING"))
+                .andExpect(jsonPath("$[0].tasks[0].kind").value("COOKING"))
                 .andExpect(jsonPath("$[0].tasks[0].duration").value(130))
                 .andExpect(jsonPath("$[0].tasks[0].dependencies").isArray())
                 .andExpect(jsonPath("$[0].tasks[0].resources").isArray())

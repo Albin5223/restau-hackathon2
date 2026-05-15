@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ScheduledStep, ScheduledStepStatus } from "@/lib/types";
 import { formatDuration } from "@/lib/format";
 
@@ -62,17 +62,16 @@ export function GanttChart({ steps }: Props) {
   const [hoveredBaseStepId, setHoveredBaseStepId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  const chartAreaRef = useRef<HTMLDivElement>(null);
+  const [chartAreaEl, setChartAreaEl] = useState<HTMLDivElement | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
 
   useEffect(() => {
-    const el = chartAreaRef.current;
-    if (!el) return;
+    if (!chartAreaEl) return;
     const ro = new ResizeObserver(([entry]) => setChartWidth(entry.contentRect.width));
-    ro.observe(el);
-    setChartWidth(el.getBoundingClientRect().width);
+    ro.observe(chartAreaEl);
+    setChartWidth(chartAreaEl.getBoundingClientRect().width);
     return () => ro.disconnect();
-  }, []);
+  }, [chartAreaEl]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 200);
@@ -212,7 +211,7 @@ export function GanttChart({ steps }: Props) {
               <div className="text-xs font-medium uppercase tracking-wider text-zinc-500">
                 Ressource
               </div>
-              <div ref={chartAreaRef} className="relative h-6">
+              <div ref={setChartAreaEl} className="relative h-6">
                 {ticks.map((ts) => {
                   const left = ((ts - baseTime) / totalMs) * 100;
                   return (

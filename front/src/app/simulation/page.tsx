@@ -7,7 +7,7 @@ import { GanttChart } from "@/components/GanttChart";
 import { useResources } from "@/components/ResourcesProvider";
 import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
-import type { AutoSimLog, AutoSimStatus, SimulationStats } from "@/lib/api";
+import type { AutoSimLog, AutoSimStatus, SimulationStats, WaitEntry } from "@/lib/api";
 import { missingResources } from "@/lib/recipes";
 import type {
   BackendCommandeResult,
@@ -114,6 +114,7 @@ const EMPTY_STATS: SimulationStats = {
   rejectionRate: 0,
   rejectionReasons: {},
   resourceUsageSeconds: {},
+  recentWaitTimes: [],
 };
 
 function StatBox({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
@@ -180,6 +181,28 @@ function StatsPanel({ stats, isLive }: { stats: SimulationStats; isLive: boolean
             </p>
           ) : (
             <p className="text-sm text-zinc-400">Aucune table servie pour l&apos;instant</p>
+          )}
+          {stats.recentWaitTimes.length > 0 && (
+            <div className="mt-3 space-y-1">
+              <p className="text-xs text-zinc-400">Dernières commandes servies :</p>
+              <div className="max-h-36 overflow-y-auto space-y-0.5">
+                {[...stats.recentWaitTimes].reverse().map((w: WaitEntry, i: number) => {
+                  const m = Math.floor(w.waitTimeSec / 60);
+                  const s = Math.round(w.waitTimeSec % 60);
+                  return (
+                    <div key={i} className="flex justify-between text-xs">
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        T{w.tableNumber}
+                        {w.partySize > 0 ? ` · ${w.partySize} pers.` : ""}
+                      </span>
+                      <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                        {m > 0 ? `${m}m ` : ""}{s}s
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
 

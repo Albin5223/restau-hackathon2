@@ -12,6 +12,12 @@ export type AutoSimLog = {
   message: string;
 };
 
+export type WaitEntry = {
+  tableNumber: number;
+  partySize: number;
+  waitTimeSec: number;
+};
+
 export type SimulationStats = {
   totalArrivals: number;
   totalRejected: number;
@@ -22,6 +28,7 @@ export type SimulationStats = {
   rejectionRate: number;
   rejectionReasons: Record<string, number>;
   resourceUsageSeconds: Record<string, number>;
+  recentWaitTimes: WaitEntry[];
 };
 
 export type AutoSimStatus = {

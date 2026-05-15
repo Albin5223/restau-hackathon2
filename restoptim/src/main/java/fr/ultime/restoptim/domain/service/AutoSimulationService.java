@@ -34,6 +34,7 @@ import fr.ultime.restoptim.domain.model.AutoSimulationLog;
 import fr.ultime.restoptim.domain.model.AutoSimulationStatus;
 import fr.ultime.restoptim.domain.model.GanttTask;
 import fr.ultime.restoptim.domain.model.SimulationStats;
+import fr.ultime.restoptim.domain.model.WaitEntry;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import fr.ultime.restoptim.domain.spi.Tables;
 
@@ -67,6 +68,7 @@ public class AutoSimulationService {
     private final ConcurrentHashMap<TableId, Long> arrivalTimeByTable = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicInteger> rejectionReasonCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> resourceUsageSec = new ConcurrentHashMap<>();
+    private final LinkedList<WaitEntry> recentWaits = new LinkedList<>();
 
     public AutoSimulationService(Tables tables, Dishes dishes, Orders orders,
                                  OrderService orderService, TimeShiftService timeShiftService) {
@@ -97,9 +99,13 @@ public class AutoSimulationService {
         rejectionReasonCounts.forEach((k, v) -> reasons.put(k, v.get()));
         Map<String, Long> usage = new HashMap<>();
         resourceUsageSec.forEach((k, v) -> usage.put(k, v.get()));
+        List<WaitEntry> recentWaitTimesCopy;
+        synchronized (recentWaits) {
+            recentWaitTimesCopy = new ArrayList<>(recentWaits);
+        }
         return new SimulationStats(arrivals, rejected, totalOrdersPlaced.get(),
                 totalTablesServed.get(), totalClientsServed.get(),
-                avgWait, rejRate, reasons, usage);
+                avgWait, rejRate, reasons, usage, recentWaitTimesCopy);
     }
 
     public synchronized void start(int durationMin, double arrivalRatePerHour, int avgPartySize, double speedMultiplier) {
@@ -120,6 +126,9 @@ public class AutoSimulationService {
         arrivalTimeByTable.clear();
         rejectionReasonCounts.clear();
         resourceUsageSec.clear();
+        synchronized (recentWaits) {
+            recentWaits.clear();
+        }
 
         // L'auto-sim travaille en temps réel : on annule tout décalage manuel
         // pour éviter un mélange incohérent des deux mécanismes.
@@ -318,14 +327,17 @@ public class AutoSimulationService {
                         long now = System.currentTimeMillis();
                         Long arrivalTime = arrivalTimeByTable.remove(table.id());
                         if (arrivalTime != null) {
-							// Log le temps d'attente pour cette commande
-							addLog("served", String.format("Table %d servie — temps d'attente : %.1f min",
-									table.number(), (now - arrivalTime) / 60000.0));
-							addLog("served", String.format("Table %d servie — temps d'attente simulé : %.1f min",
-									table.number(), (now - arrivalTime) / 60000.0 * currentSpeedMultiplier));
                             double speed = currentSpeedMultiplier > 0 ? currentSpeedMultiplier : 1.0;
-                            totalWaitTimeMs.addAndGet((long) ((now - arrivalTime) / speed));
+                            long simWaitMs = (long) ((now - arrivalTime) / speed);
+                            totalWaitTimeMs.addAndGet(simWaitMs);
                             waitCount.incrementAndGet();
+                            WaitEntry entry = new WaitEntry(table.number(),
+                                    table.partySize() != null ? table.partySize() : 0,
+                                    simWaitMs / 1000.0);
+                            synchronized (recentWaits) {
+                                recentWaits.addLast(entry);
+                                if (recentWaits.size() > 20) recentWaits.removeFirst();
+                            }
                         }
                         if (table.partySize() != null) {
                             totalClientsServed.addAndGet(table.partySize());

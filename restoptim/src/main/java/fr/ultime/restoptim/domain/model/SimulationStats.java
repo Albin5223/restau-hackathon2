@@ -13,5 +13,6 @@ public record SimulationStats(
         double rejectionRate,
         Map<String, Integer> rejectionReasons,
         Map<String, Long> resourceUsageSeconds,
-        List<WaitEntry> recentWaitTimes
+        List<WaitEntry> recentWaitTimes,
+        List<SimTimePoint> timeSeries
 ) {}

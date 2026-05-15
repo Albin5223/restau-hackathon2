@@ -8,6 +8,7 @@ import { useResources } from "@/components/ResourcesProvider";
 import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
 import type { AutoSimLog, AutoSimStatus, SimulationStats, WaitEntry } from "@/lib/api";
+import { SimulationCharts } from "@/components/SimulationCharts";
 import { missingResources } from "@/lib/recipes";
 import type {
   BackendCommandeResult,
@@ -115,6 +116,7 @@ const EMPTY_STATS: SimulationStats = {
   rejectionReasons: {},
   resourceUsageSeconds: {},
   recentWaitTimes: [],
+  timeSeries: [],
 };
 
 function StatBox({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
@@ -129,6 +131,7 @@ function StatBox({ label, value, highlight }: { label: string; value: string | n
 }
 
 function StatsPanel({ stats, isLive }: { stats: SimulationStats; isLive: boolean }) {
+  const [tab, setTab] = useState<"stats" | "charts">("stats");
   const totalWaitSec = Math.round(stats.avgWaitTimeSec);
   const waitMin = Math.floor(totalWaitSec / 60);
   const waitSec = totalWaitSec % 60;
@@ -140,21 +143,47 @@ function StatsPanel({ stats, isLive }: { stats: SimulationStats; isLive: boolean
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-          Statistiques de performance
-        </h2>
-        {isLive ? (
-          <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-            En direct
-          </span>
-        ) : (
-          <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-            Résultats finaux
-          </span>
-        )}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+            Statistiques de performance
+          </h2>
+          {isLive ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+              En direct
+            </span>
+          ) : (
+            <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+              Résultats finaux
+            </span>
+          )}
+        </div>
+        <div className="flex gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-0.5 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+          {(["stats", "charts"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                tab === t
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              }`}
+            >
+              {t === "stats" ? "Chiffres" : "Graphiques"}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {tab === "charts" ? (
+        <SimulationCharts
+          timeSeries={stats.timeSeries}
+          recentWaitTimes={stats.recentWaitTimes}
+          avgWaitTimeSec={stats.avgWaitTimeSec}
+        />
+      ) : null}
+      {tab === "stats" ? (<>
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatBox label="Arrivées" value={stats.totalArrivals} />
@@ -256,6 +285,7 @@ function StatsPanel({ stats, isLive }: { stats: SimulationStats; isLive: boolean
           </div>
         </div>
       )}
+      </>) : null}
     </section>
   );
 }

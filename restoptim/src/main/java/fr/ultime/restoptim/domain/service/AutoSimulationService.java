@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 import fr.ultime.restoptim.domain.model.AutoSimulationLog;
 import fr.ultime.restoptim.domain.model.AutoSimulationStatus;
 import fr.ultime.restoptim.domain.model.GanttTask;
+import fr.ultime.restoptim.domain.model.SimTimePoint;
 import fr.ultime.restoptim.domain.model.SimulationStats;
 import fr.ultime.restoptim.domain.model.WaitEntry;
 import fr.ultime.restoptim.domain.spi.Dishes;
@@ -69,6 +70,8 @@ public class AutoSimulationService {
     private final ConcurrentHashMap<String, AtomicInteger> rejectionReasonCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> resourceUsageSec = new ConcurrentHashMap<>();
     private final LinkedList<WaitEntry> recentWaits = new LinkedList<>();
+    private final List<SimTimePoint> timeSeries = new ArrayList<>();
+    private volatile long simStartRealMs = 0;
 
     public AutoSimulationService(Tables tables, Dishes dishes, Orders orders,
                                  OrderService orderService, TimeShiftService timeShiftService) {
@@ -103,9 +106,13 @@ public class AutoSimulationService {
         synchronized (recentWaits) {
             recentWaitTimesCopy = new ArrayList<>(recentWaits);
         }
+        List<SimTimePoint> timeSeriesCopy;
+        synchronized (timeSeries) {
+            timeSeriesCopy = new ArrayList<>(timeSeries);
+        }
         return new SimulationStats(arrivals, rejected, totalOrdersPlaced.get(),
                 totalTablesServed.get(), totalClientsServed.get(),
-                avgWait, rejRate, reasons, usage, recentWaitTimesCopy);
+                avgWait, rejRate, reasons, usage, recentWaitTimesCopy, timeSeriesCopy);
     }
 
     public synchronized void start(int durationMin, double arrivalRatePerHour, int avgPartySize, double speedMultiplier) {
@@ -129,11 +136,15 @@ public class AutoSimulationService {
         synchronized (recentWaits) {
             recentWaits.clear();
         }
+        synchronized (timeSeries) {
+            timeSeries.clear();
+        }
 
         // L'auto-sim travaille en temps réel : on annule tout décalage manuel
         // pour éviter un mélange incohérent des deux mécanismes.
         timeShiftService.reset();
         currentSpeedMultiplier = speedMultiplier;
+        simStartRealMs = System.currentTimeMillis();
         active.set(true);
 
         executor = Executors.newSingleThreadScheduledExecutor();
@@ -299,6 +310,19 @@ public class AutoSimulationService {
                     serveTableForCommande(commandeId);
                 }
             }
+            if (active.get() && simStartRealMs > 0) {
+                double speed = currentSpeedMultiplier > 0 ? currentSpeedMultiplier : 1.0;
+                long elapsedSimSec = (long) ((now - simStartRealMs) / speed / 1000);
+                int wc = waitCount.get();
+                double avgWait = wc > 0 ? totalWaitTimeMs.get() / 1000.0 / wc : 0.0;
+                SimTimePoint point = new SimTimePoint(elapsedSimSec,
+                        totalArrivals.get(), totalOrdersPlaced.get(),
+                        totalTablesServed.get(), totalRejected.get(), avgWait);
+                synchronized (timeSeries) {
+                    timeSeries.add(point);
+                    if (timeSeries.size() > 300) timeSeries.remove(0);
+                }
+            }
         } catch (Exception e) {
             logger.error("[AUTO-SIM] Erreur monitoring serving", e);
         }
@@ -331,12 +355,13 @@ public class AutoSimulationService {
                             long simWaitMs = (long) ((now - arrivalTime) / speed);
                             totalWaitTimeMs.addAndGet(simWaitMs);
                             waitCount.incrementAndGet();
+                            long elapsedSimSec = (long) ((now - simStartRealMs) / speed / 1000);
                             WaitEntry entry = new WaitEntry(table.number(),
                                     table.partySize() != null ? table.partySize() : 0,
-                                    simWaitMs / 1000.0);
+                                    simWaitMs / 1000.0, elapsedSimSec);
                             synchronized (recentWaits) {
                                 recentWaits.addLast(entry);
-                                if (recentWaits.size() > 20) recentWaits.removeFirst();
+                                if (recentWaits.size() > 200) recentWaits.removeFirst();
                             }
                         }
                         if (table.partySize() != null) {

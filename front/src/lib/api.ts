@@ -16,6 +16,16 @@ export type WaitEntry = {
   tableNumber: number;
   partySize: number;
   waitTimeSec: number;
+  elapsedSimSec: number;
+};
+
+export type SimTimePoint = {
+  elapsedSimSec: number;
+  arrivals: number;
+  ordersPlaced: number;
+  tablesServed: number;
+  rejected: number;
+  avgWaitSec: number;
 };
 
 export type SimulationStats = {
@@ -29,6 +39,7 @@ export type SimulationStats = {
   rejectionReasons: Record<string, number>;
   resourceUsageSeconds: Record<string, number>;
   recentWaitTimes: WaitEntry[];
+  timeSeries: SimTimePoint[];
 };
 
 export type AutoSimStatus = {

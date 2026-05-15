@@ -1,6 +1,6 @@
 const SOUNDS = {
   releaseTable: "/sounds/liberer-table.mp3",
-  rejectCustomer: "/sounds/dehors.mp3",
+  releaseAll: "/sounds/dehors.mp3",
   placeOrder: "/sounds/fahh.mp3",
 } as const;
 

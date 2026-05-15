@@ -82,7 +82,7 @@ API principale exposée sur `http://localhost:8080`.
 **Prérequis :** Docker et Docker Compose
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 ### Sans Docker
@@ -94,7 +94,8 @@ Ouvrir deux terminaux :
 ```bash
 # Terminal 1 — Backend
 cd restoptim
-./mvnw spring-boot:run
+mvn clean package
+mvn spring-boot:run
 ```
 
 ```bash

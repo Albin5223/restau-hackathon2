@@ -781,6 +781,7 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
 export default function SimulationPage() {
   const [mode, setMode] = useState<SimMode>("manuel");
   const [isAutoActive, setIsAutoActive] = useState(false);
+  const hasInitializedMode = useRef(false);
 
   // Poll status even when on the manual tab so the warning appears immediately
   useEffect(() => {
@@ -788,7 +789,13 @@ export default function SimulationPage() {
     async function poll() {
       try {
         const s = await api.simulation.status();
-        if (!cancelled) setIsAutoActive(s.active);
+        if (!cancelled) {
+          setIsAutoActive(s.active);
+          if (!hasInitializedMode.current) {
+            hasInitializedMode.current = true;
+            if (s.active) setMode("auto");
+          }
+        }
       } catch {}
     }
     poll();

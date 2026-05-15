@@ -216,8 +216,8 @@ function StatsPanel({ stats, isLive, onDismiss }: { stats: SimulationStats; isLi
           </p>
           {stats.avgWaitTimeSec > 0 ? (() => {
             const thresholds = [
-              { max: 600,  label: "Excellent",  bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
-              { max: 1200, label: "Acceptable", bar: "bg-amber-400",   text: "text-amber-600 dark:text-amber-400",    bg: "bg-amber-50 dark:bg-amber-950/40" },
+              { max: 1500,  label: "Excellent",  bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+              { max: 2100, label: "Acceptable", bar: "bg-amber-400",   text: "text-amber-600 dark:text-amber-400",    bg: "bg-amber-50 dark:bg-amber-950/40" },
               { max: Infinity, label: "Élevé",  bar: "bg-red-500",     text: "text-red-600 dark:text-red-400",        bg: "bg-red-50 dark:bg-red-950/40" },
             ];
             const t = thresholds.find((th) => stats.avgWaitTimeSec < th.max)!;
@@ -233,7 +233,7 @@ function StatsPanel({ stats, isLive, onDismiss }: { stats: SimulationStats; isLi
                 <div className="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700">
                   <div className={`h-1.5 rounded-full transition-all ${t.bar}`} style={{ width: `${barPct}%` }} />
                 </div>
-                <p className="mt-1 text-xs text-zinc-400">Seuil cible : 10 min (600 s)</p>
+                <p className="mt-1 text-xs text-zinc-400">Seuil cible : 25 min (1500 s)</p>
               </div>
             );
           })() : (

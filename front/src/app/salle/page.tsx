@@ -6,6 +6,7 @@ import { FloorPlanView } from "@/components/FloorPlanView";
 import { useResources } from "@/components/ResourcesProvider";
 import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
+import { playSound } from "@/lib/sounds";
 import type {
   BackendGanttTask,
   BackendTable,
@@ -122,6 +123,7 @@ export default function SallePage() {
 
   const clearAllTables = useCallback(async () => {
     const occupied = tables.filter((t) => t.status !== "libre");
+    if (occupied.length > 0) playSound("releaseAll");
     await Promise.all(occupied.map((t) => api.tables.release(t.id)));
     setSelectedId(null);
     await load();

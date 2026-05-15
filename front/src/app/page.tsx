@@ -62,7 +62,7 @@ export default function Home() {
 
   const occupied = tables.filter((t) => t.status !== "libre").length;
   const inPrep = tables.filter((t) => t.status === "en_preparation").length;
-  const activeCommandeIds = new Set(ganttTasks.map((t) => t.commandeId));
+  const activeCommandeIds = new Set(ganttTasks.map((t) => t.orderId));
 
   const upcomingServes = ganttTasks
     .filter((t) => t.kind === "dressage" && t.endAt > Date.now())
@@ -77,7 +77,9 @@ export default function Home() {
     if (ganttTasks.length === 0 || totalMs === 0) return [];
     const byResource = new Map<string, number>();
     for (const t of ganttTasks) {
-      byResource.set(t.resourceName, (byResource.get(t.resourceName) ?? 0) + (t.endAt - t.startAt));
+      for (const name of t.resourceNames) {
+        byResource.set(name, (byResource.get(name) ?? 0) + (t.endAt - t.startAt));
+      }
     }
     return Array.from(byResource.entries()).map(([name, ms]) => ({
       name,

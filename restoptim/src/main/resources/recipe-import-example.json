@@ -1,0 +1,60 @@
+[
+  {
+    "name": "Soupe à l'oignon",
+    "tasks": [
+        { "nom": "Émincer les oignons",     "resources": ["commis"], "kind": "preparation", "duration": 300, "dependencies": [] },
+        { "nom": "Caraméliser les oignons", "resources": ["plaque"], "kind": "cooking",     "duration": 1200, "dependencies": [0] },
+        { "nom": "Mijoter le bouillon",     "resources": ["plaque"], "kind": "cooking",     "duration": 600,  "dependencies": [1] },
+        { "nom": "Gratiner au four",        "resources": ["four"],   "kind": "cooking",     "duration": 300,  "dependencies": [2] },
+        { "nom": "Dresser l'assiette",      "resources": ["chef"],   "kind": "plating",    "duration": 60,   "dependencies": [3] }
+      ]
+  },
+  {
+    "name": "Tartare de bœuf",
+    "tasks": [
+        { "nom": "Hacher la viande",      "resources": ["commis"], "kind": "preparation", "duration": 360, "dependencies": [] },
+        { "nom": "Préparer la garniture", "resources": ["commis"], "kind": "preparation", "duration": 180, "dependencies": [] },
+        { "nom": "Assaisonner le tartare","resources": ["chef"],   "kind": "preparation", "duration": 120, "dependencies": [0, 1] },
+        { "nom": "Dresser l'assiette",    "resources": ["chef"],   "kind": "plating",    "duration": 90,  "dependencies": [2] }
+      ]
+  },
+  {
+    "name": "Saumon en papillote",
+    "tasks": [
+        { "nom": "Préparer le saumon",     "resources": ["commis"], "kind": "preparation", "duration": 240, "dependencies": [] },
+        { "nom": "Préparer la julienne",   "resources": ["commis"], "kind": "preparation", "duration": 300, "dependencies": [] },
+        { "nom": "Monter la papillote",    "resources": ["chef"],   "kind": "preparation", "duration": 120, "dependencies": [0, 1] },
+        { "nom": "Cuire au four",          "resources": ["four"],   "kind": "cooking",     "duration": 720, "dependencies": [2] },
+        { "nom": "Dresser l'assiette",     "resources": ["chef"],   "kind": "plating",    "duration": 90,  "dependencies": [3] }
+      ]
+  },
+  {
+    "name": "Crème brûlée",
+    "tasks": [
+        { "nom": "Préparer l'appareil",   "resources": ["commis"], "kind": "preparation", "duration": 300, "dependencies": [] },
+        { "nom": "Cuire au bain-marie",   "resources": ["four"],   "kind": "cooking",     "duration": 2400, "dependencies": [0] },
+        { "nom": "Refroidir",             "resources": [],         "kind": "other",       "duration": 3600, "dependencies": [1] },
+        { "nom": "Caraméliser au chalumeau", "resources": ["chef"],"kind": "plating",    "duration": 60,   "dependencies": [2] }
+      ]
+  },
+  {
+    "name": "Pavé de cabillaud beurre blanc",
+    "tasks": [
+        { "nom": "Préparer le cabillaud",  "resources": ["commis"], "kind": "preparation", "duration": 180, "dependencies": [] },
+        { "nom": "Préparer le beurre blanc","resources": ["commis"],"kind": "preparation", "duration": 240, "dependencies": [] },
+        { "nom": "Saisir le cabillaud",    "resources": ["plaque"], "kind": "cooking",     "duration": 360, "dependencies": [0] },
+        { "nom": "Monter le beurre blanc", "resources": ["plaque"], "kind": "cooking",     "duration": 180, "dependencies": [1] },
+        { "nom": "Dresser l'assiette",     "resources": ["chef"],   "kind": "plating",    "duration": 90,  "dependencies": [2, 3] }
+      ]
+  },
+  {
+    "name": "Tarte tatin",
+    "tasks": [
+        { "nom": "Préparer la pâte",       "resources": ["commis"], "kind": "preparation", "duration": 600, "dependencies": [] },
+        { "nom": "Caraméliser les pommes", "resources": ["plaque"], "kind": "cooking",     "duration": 480, "dependencies": [] },
+        { "nom": "Assembler la tarte",     "resources": ["chef"],   "kind": "preparation", "duration": 120, "dependencies": [0, 1] },
+        { "nom": "Cuire au four",          "resources": ["four"],   "kind": "cooking",     "duration": 1500, "dependencies": [2] },
+        { "nom": "Démouler et dresser",    "resources": ["chef"],   "kind": "plating",    "duration": 120, "dependencies": [3] }
+      ]
+    }
+]

@@ -6,7 +6,35 @@ import type {
   ResourceTypeDto,
 } from "./types";
 
+export type AutoSimLog = {
+  timestamp: number;
+  type: "arrival" | "rejected" | "order" | "served" | "left" | "info" | "error";
+  message: string;
+};
+
+export type AutoSimStatus = {
+  active: boolean;
+  logs: AutoSimLog[];
+};
+
+export type TimeStatus = {
+  offsetMs: number;
+  autoSimulationActive: boolean;
+};
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+
+export class ApiError extends Error {
+  status: number;
+  path: string;
+
+  constructor(path: string, status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {};
@@ -17,9 +45,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`API ${path} → ${res.status}${text ? ": " + text : ""}`);
+    throw new ApiError(
+      path,
+      res.status,
+      `API ${path} → ${res.status}${text ? ": " + text : ""}`,
+    );
   }
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {
@@ -30,9 +63,47 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ name, tasks }),
       }),
+    update: (id: number, name: string, tasks: Recipe["tasks"]) =>
+      request<Recipe>(`/api/dishes/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, tasks }),
+      }),
+    delete: (id: number) =>
+      request<void>(`/api/dishes/${id}`, { method: "DELETE" }),
+    importBatch: async (dishList: Array<{ name: string; tasks: Recipe["tasks"] }>) => {
+      const res = await fetch(`${API}/api/dishes/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dishList),
+      });
+      if (!res.ok) {
+        let message = `Erreur ${res.status}`;
+        try {
+          const json = await res.json() as { message?: string };
+          if (json.message) message = json.message;
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+      return res.json() as Promise<Recipe[]>;
+    },
   },
   tables: {
     list: () => request<BackendTable[]>("/api/tables"),
+    create: (seats: number) =>
+      request<BackendTable>("/api/tables", {
+        method: "POST",
+        body: JSON.stringify({ seats }),
+      }),
+    updateSeats: (id: number, seats: number) =>
+      request<BackendTable>(`/api/tables/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ seats }),
+      }),
+    delete: (id: number) =>
+      request<void>(`/api/tables/${id}`, { method: "DELETE" }),
     install: (id: number, partySize: number) =>
       request<BackendTable>(`/api/tables/${id}/install`, {
         method: "POST",
@@ -43,11 +114,11 @@ export const api = {
     serve: (id: number) =>
       request<BackendTable>(`/api/tables/${id}/serve`, { method: "POST" }),
   },
-  commandes: {
-    place: (tableId: number, dishIds: number[]) =>
-      request<BackendCommandeResult>("/api/commandes", {
+  orders: {
+    place: (tableId: number, dishIds: number[], speedMultiplier?: number) =>
+      request<BackendCommandeResult>("/api/orders", {
         method: "POST",
-        body: JSON.stringify({ tableId, dishIds }),
+        body: JSON.stringify({ tableId, dishIds, speedMultiplier }),
       }),
   },
   cuisine: {
@@ -55,5 +126,49 @@ export const api = {
   },
   resources: {
     list: () => request<ResourceTypeDto[]>("/api/resources"),
+    usage: () => request<Record<string, number>>("/api/resources/usage"),
+    createType: (name: string) =>
+      request<ResourceTypeDto[]>("/api/resources", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      }),
+    deleteType: (name: string) =>
+      request<ResourceTypeDto[]>(`/api/resources/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      }),
+    addInstance: (name: string) =>
+      request<ResourceTypeDto[]>(
+        `/api/resources/${encodeURIComponent(name)}/instances`,
+        { method: "POST" },
+      ),
+    removeInstance: (name: string) =>
+      request<ResourceTypeDto[]>(
+        `/api/resources/${encodeURIComponent(name)}/instances`,
+        { method: "DELETE" },
+      ),
+  },
+  time: {
+    status: () => request<TimeStatus>("/api/time"),
+    shift: (deltaSec: number) =>
+      request<TimeStatus>("/api/time/shift", {
+        method: "POST",
+        body: JSON.stringify({ deltaSec }),
+      }),
+    reset: () =>
+      request<TimeStatus>("/api/time/reset", { method: "POST" }),
+  },
+  simulation: {
+    status: () => request<AutoSimStatus>("/api/simulation/auto/status"),
+    start: (params: {
+      durationMin: number;
+      arrivalRatePerHour: number;
+      avgPartySize: number;
+      speedMultiplier: number;
+    }) =>
+      request<void>("/api/simulation/auto/start", {
+        method: "POST",
+        body: JSON.stringify(params),
+      }),
+    stop: () => request<void>("/api/simulation/auto/stop", { method: "POST" }),
   },
 };

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { GanttChart } from "@/components/GanttChart";
+import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
 import type { ScheduledStep, ScheduledStepStatus, BackendGanttTask } from "@/lib/types";
 
@@ -10,28 +11,48 @@ const stepLabel: Record<string, string> = {
   preparation: "Préparation",
   cuisson: "Cuisson",
   dressage: "Dressage",
+  other: "Attente",
 };
 
-function toScheduledStep(task: BackendGanttTask): ScheduledStep {
+function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
   const now = Date.now();
   let status: ScheduledStepStatus = "a_venir";
   if (task.endAt < now) status = "termine";
   else if (task.startAt <= now) status = "en_cours";
-  return {
-    id: task.id,
-    orderId: task.commandeId,
+
+  if (task.resourceNames.length === 0) {
+    return [{
+      id: task.id,
+      orderId: task.orderId,
+      tableNumber: task.tableNumber,
+      recipeName: task.dishName,
+      stepName: task.taskName,
+      kind: task.kind,
+      resourceId: `__no_resource__:${task.id}`,
+      resourceLabel: "Sans ressource",
+      startAt: task.startAt,
+      endAt: task.endAt,
+      status,
+    }];
+  }
+
+  return task.resourceNames.map((name, idx) => ({
+    id: idx === 0 ? task.id : `${task.id}__r${idx}`,
+    orderId: task.orderId,
     tableNumber: task.tableNumber,
     recipeName: task.dishName,
+    stepName: task.taskName,
     kind: task.kind,
-    resourceId: task.resourceName,
-    resourceLabel: task.resourceName,
+    resourceId: name,
+    resourceLabel: name,
     startAt: task.startAt,
     endAt: task.endAt,
     status,
-  };
+  }));
 }
 
 export default function CuisinePage() {
+  const { shiftVersion } = useTime();
   const [steps, setSteps] = useState<ScheduledStep[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
@@ -42,7 +63,7 @@ export default function CuisinePage() {
       try {
         const response = await api.cuisine.gantt();
         if (!mounted) return;
-        setSteps(response.tasks.map(toScheduledStep));
+        setSteps(response.tasks.flatMap(toScheduledSteps));
         setLastUpdate(new Date());
       } catch {
         // backend pas encore démarré ou commande en cours — on garde l'état précédent
@@ -50,12 +71,13 @@ export default function CuisinePage() {
     }
 
     load();
-    const id = setInterval(load, 10_000);
+    const id = setInterval(load, 3_000);
     return () => {
       mounted = false;
       clearInterval(id);
     };
-  }, []);
+    // shiftVersion → relance immédiate du fetch après un voyage temporel
+  }, [shiftVersion]);
 
   const upcomingAlerts = steps
     .filter((s) => s.status !== "termine")
@@ -123,5 +145,7 @@ function badgeForKind(kind: string) {
     return "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300";
   if (kind === "cuisson")
     return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300";
-  return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
+  if (kind === "dressage")
+    return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
+  return "bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400";
 }

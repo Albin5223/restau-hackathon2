@@ -1,29 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useRecipes } from "@/components/RecipesProvider";
+import { useResources } from "@/components/ResourcesProvider";
 import { RecipeGraphEditor } from "@/components/RecipeGraphEditor";
-import { allResources, assignTracks, computeSchedule, validateRecipe } from "@/lib/recipes";
+import { allResources, computeSchedule, missingResources, validateRecipe } from "@/lib/recipes";
+import { formatDuration } from "@/lib/format";
 import type { Recipe, RecipeStep, ResourceTypeDto } from "@/lib/types";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 
 // ─── Simple form types ────────────────────────────────────────────────────────
 
 const KINDS = [
-  { value: "preparation", label: "Préparation" },
-  { value: "cuisson", label: "Cuisson" },
-  { value: "dressage", label: "Dressage" },
-  { value: "other", label: "Autre" },
+  { value: "PREPARATION", label: "Préparation" },
+  { value: "COOKING", label: "Cuisson" },
+  { value: "PLATING", label: "Dressage" },
+  { value: "OTHER", label: "Autre" },
 ];
 
 type DraftStep = {
   uid: string;
   nom: string;
-  ressource: string[];
+  resources: string[];
   kind: string;
-  duree: number;
-  deps: string[];
+  duration: number;
+  dependencies: string[];
 };
 
 let uidCounter = 0;
@@ -31,47 +34,80 @@ const nextUid = () => `s${++uidCounter}`;
 const emptyDraft = (): DraftStep => ({
   uid: nextUid(),
   nom: "",
-  ressource: [],
-  kind: "preparation",
-  duree: 5,
-  deps: [],
+  resources: [],
+  kind: "PREPARATION",
+  duration: 5,
+  dependencies: [],
 });
+
+function recipeToDraftSteps(tasks: RecipeStep[]): DraftStep[] {
+  const uids = tasks.map(() => nextUid());
+  return tasks.map((step, i) => ({
+    uid: uids[i],
+    nom: step.nom,
+    resources: step.resources,
+    kind: step.kind ?? "OTHER",
+    duration: Math.max(1, Math.round(step.duration / 60)),
+    dependencies: step.dependencies
+      .map((d) => uids[d])
+      .filter((u): u is string => u !== undefined),
+  }));
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type CreationMode = "simple" | "graph";
 
 export default function MenuPage() {
-  const { recipes, addRecipe } = useRecipes();
+  const { recipes, addRecipe, updateRecipe, deleteRecipe } = useRecipes();
+  const { resourceTypes } = useResources();
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [editRecipe, setEditRecipe] = useState<Recipe | null>(null);
   const [mode, setMode] = useState<CreationMode>("simple");
-  const [resourceTypes, setResourceTypes] = useState<ResourceTypeDto[]>([]);
-
-  useEffect(() => {
-    api.resources.list().then(setResourceTypes).catch(() => {});
-  }, []);
 
   function handleClose() {
     setShowForm(false);
   }
 
-  async function handleSubmit(name: string, etapes: RecipeStep[]) {
-    await addRecipe(name, etapes);
+  async function handleSubmit(name: string, tasks: RecipeStep[]) {
+    await addRecipe(name, tasks);
     setShowForm(false);
   }
 
   return (
     <>
+      {showImport && <ImportModal onClose={() => setShowImport(false)} />}
+      {editRecipe && (
+        <EditModal
+          recipe={editRecipe}
+          existingNames={recipes.filter((r) => r.id !== editRecipe.id).map((r) => r.name)}
+          resourceTypes={resourceTypes}
+          onSubmit={async (name, tasks) => {
+            await updateRecipe(editRecipe.id, name, tasks);
+            setEditRecipe(null);
+          }}
+          onClose={() => setEditRecipe(null)}
+        />
+      )}
       <PageHeader
         title="Menu"
         subtitle={`${recipes.length} plats — étapes, dépendances et ressources`}
         actions={
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            {showForm ? "Fermer" : "+ Nouveau plat"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              Importer
+            </button>
+            <button
+              onClick={() => setShowForm((v) => !v)}
+              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              {showForm ? "Fermer" : "+ Nouveau plat"}
+            </button>
+          </div>
         }
       />
 
@@ -124,7 +160,13 @@ export default function MenuPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {recipes.map((recipe) => (
-              <RecipeCard key={recipe.id} recipe={recipe} />
+              <RecipeCard
+                key={recipe.id}
+                recipe={recipe}
+                resourceTypes={resourceTypes}
+                onEdit={() => setEditRecipe(recipe)}
+                onDelete={() => deleteRecipe(recipe.id)}
+              />
             ))}
           </div>
         )}
@@ -135,15 +177,53 @@ export default function MenuPage() {
 
 // ─── RecipeCard ───────────────────────────────────────────────────────────────
 
-function RecipeCard({ recipe }: { recipe: Recipe }) {
-  const { totalMin, timings } = useMemo(() => computeSchedule(recipe), [recipe]);
-  const { tracks, numTracks } = useMemo(() => assignTracks(timings), [timings]);
+function RecipeCard({
+  recipe,
+  resourceTypes,
+  onEdit,
+  onDelete,
+}: {
+  recipe: Recipe;
+  resourceTypes: ResourceTypeDto[];
+  onEdit: () => void;
+  onDelete: () => Promise<void>;
+}) {
+  const { totalSec } = useMemo(() => computeSchedule(recipe), [recipe]);
   const resourceKinds = allResources(recipe);
+  const missing = useMemo(
+    () => missingResources(recipe, resourceTypes),
+    [recipe, resourceTypes],
+  );
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setDeleteError("Impossible d'effectuer la suppression.");
+      } else {
+        setDeleteError(err instanceof Error ? err.message : "Erreur lors de la suppression.");
+      }
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
 
   return (
-    <article className="flex flex-col rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+    <article
+      className={`group flex flex-col rounded-lg border bg-white p-5 dark:bg-zinc-950 ${
+        missing.length > 0
+          ? "border-amber-300 dark:border-amber-800"
+          : "border-zinc-200 dark:border-zinc-800"
+      }`}
+    >
       <header className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
             {recipe.name}
           </h2>
@@ -151,60 +231,315 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
             {resourceKinds.join(" · ")}
           </p>
         </div>
-        <span className="rounded-md bg-zinc-100 px-2 py-1 font-mono text-xs tabular-nums text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-          {totalMin} min
-        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="rounded-md bg-zinc-100 px-2 py-1 font-mono text-xs tabular-nums text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+            {formatDuration(totalSec)}
+          </span>
+          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={onEdit}
+              title="Modifier"
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setConfirmDelete(true); setDeleteError(null); }}
+              title="Supprimer"
+              className="rounded p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </header>
 
-      <div
-        className="relative mt-4 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-900"
-        style={{ height: `${numTracks * 28 + 4}px` }}
-      >
-        {recipe.tasks.etapes.map((etape, i) => {
-          const t = timings[i];
-          const left = totalMin > 0 ? (t.startMin / totalMin) * 100 : 0;
-          const width = totalMin > 0 ? (etape.duree / totalMin) * 100 : 100;
-          const top = 4 + tracks[i] * 28;
-          return (
-            <div
-              key={i}
-              className={`absolute flex h-6 items-center overflow-hidden rounded px-1 text-[10px] font-medium leading-none text-white shadow-sm ${barColor(i, recipe.tasks.etapes.length)}`}
-              style={{ left: `${left}%`, width: `${Math.max(width, 2)}%`, top: `${top}px` }}
-              title={`${etape.nom} — ${etape.duree} min`}
-            >
-              <span className="truncate">{etape.nom}</span>
-            </div>
-          );
-        })}
-      </div>
-
       <ol className="mt-3 space-y-1 text-xs">
-        {recipe.tasks.etapes.map((etape, i) => (
+        {recipe.tasks.map((etape, i) => (
           <li key={i} className="flex items-center justify-between gap-2">
             <span className="text-zinc-700 dark:text-zinc-300">
               <span className="mr-1 font-mono text-zinc-400">#{i + 1}</span>
               {etape.nom}
-              <span className="ml-1 text-zinc-500">({etape.ressource.join(", ")})</span>
-              {etape.deps.length > 0 ? (
+              {etape.resources.length > 0 && (
+                <span className="ml-1 text-zinc-500">({etape.resources.join(", ")})</span>
+              )}
+              {etape.dependencies.length > 0 ? (
                 <span className="ml-1 text-zinc-400">
-                  dép. {etape.deps.map((d) => `#${d}`).join(", ")}
+                  dép. {etape.dependencies.map((d) => `#${d}`).join(", ")}
                 </span>
               ) : null}
             </span>
             <span className="font-mono tabular-nums text-zinc-600 dark:text-zinc-400">
-              {etape.duree} min
+              {formatDuration(etape.duration)}
             </span>
           </li>
         ))}
       </ol>
+
+      {missing.length > 0 && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs dark:border-amber-800 dark:bg-amber-950">
+          <p className="font-semibold text-amber-900 dark:text-amber-100">
+            Plat indisponible
+          </p>
+          <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+            Ressource{missing.length > 1 ? "s" : ""} manquante
+            {missing.length > 1 ? "s" : ""} : {missing.join(", ")}
+          </p>
+          <Link
+            href="/ressources"
+            className="mt-1.5 inline-block text-[11px] font-semibold text-amber-900 underline decoration-dotted hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100"
+          >
+            → Ajouter les ressources manquantes
+          </Link>
+        </div>
+      )}
+
+      {deleteError && (
+        <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          {deleteError}
+        </p>
+      )}
+
+      {confirmDelete && (
+        <div className="mt-3 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900 dark:bg-red-950">
+          <span className="text-xs text-red-800 dark:text-red-300">
+            Supprimer ce plat ?
+          </span>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="text-xs text-zinc-600 hover:underline dark:text-zinc-400"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-xs font-semibold text-red-700 hover:underline disabled:opacity-50 dark:text-red-400"
+            >
+              {deleting ? "Suppression…" : "Confirmer"}
+            </button>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
 
-function barColor(idx: number, total: number) {
-  if (idx === 0) return "bg-blue-500/80";
-  if (idx === total - 1) return "bg-emerald-500/80";
-  return "bg-amber-500/80";
+// ─── ImportModal ──────────────────────────────────────────────────────────────
+
+function ImportModal({ onClose }: { onClose: () => void }) {
+  const { reloadRecipes } = useRecipes();
+  const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  function pickFile(f: File) {
+    setFile(f);
+    setError(null);
+    setSuccess(null);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f) pickFile(f);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) pickFile(f);
+  }
+
+  async function handleImport() {
+    if (!file) return;
+    setError(null);
+    setSuccess(null);
+    setLoading(true);
+    try {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        setError("Fichier JSON invalide — impossible de le parser.");
+        return;
+      }
+      const dishList = (Array.isArray(parsed) ? parsed : [parsed]) as Array<{
+        name: string;
+        tasks: Recipe["tasks"];
+      }>;
+      const imported = await api.dishes.importBatch(dishList);
+      await reloadRecipes();
+      setSuccess(
+        `${imported.length} plat${imported.length > 1 ? "s" : ""} importé${imported.length > 1 ? "s" : ""} avec succès.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          Importer des plats
+        </h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Format attendu : objet unique ou tableau JSON{" "}
+          <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">
+            {"[{ name, tasks: { etapes: [...] } }]"}
+          </code>
+          . La durée (<code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-900">duree</code>) est en secondes.
+        </p>
+
+        {/* Drag & drop zone */}
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          className={`mt-4 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
+            dragging
+              ? "border-zinc-900 bg-zinc-50 dark:border-zinc-400 dark:bg-zinc-900"
+              : "border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-950"
+          }`}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="mb-2 h-8 w-8 text-zinc-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+            />
+          </svg>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Glissez un fichier JSON ici
+          </p>
+          <p className="my-1.5 text-xs text-zinc-400">ou</p>
+          <label className="cursor-pointer rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900">
+            Parcourir…
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="sr-only"
+              onChange={handleFileChange}
+            />
+          </label>
+          {file && (
+            <p className="mt-3 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              {file.name}
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            {error}
+          </p>
+        )}
+
+        {success && (
+          <p className="mt-4 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300">
+            {success}
+          </p>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            {success ? "Fermer" : "Annuler"}
+          </button>
+          {!success && (
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={!file || loading}
+              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              {loading ? "Import en cours…" : "Importer"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── EditModal ────────────────────────────────────────────────────────────────
+
+function EditModal({
+  recipe,
+  existingNames,
+  resourceTypes,
+  onSubmit,
+  onClose,
+}: {
+  recipe: Recipe;
+  existingNames: string[];
+  resourceTypes: ResourceTypeDto[];
+  onSubmit: (name: string, etapes: RecipeStep[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const initialSteps = useMemo(() => recipeToDraftSteps(recipe.tasks), [recipe]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-12">
+      <div className="w-full max-w-2xl pb-12">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-white">
+            Modifier — {recipe.name}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-zinc-300 hover:text-white"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <RecipeForm
+          existingNames={existingNames}
+          resourceTypes={resourceTypes}
+          onSubmit={onSubmit}
+          onCancel={onClose}
+          initialName={recipe.name}
+          initialSteps={initialSteps}
+          submitLabel="Enregistrer les modifications"
+        />
+      </div>
+    </div>
+  );
 }
 
 // ─── RecipeForm (simple mode) ─────────────────────────────────────────────────
@@ -214,14 +549,20 @@ function RecipeForm({
   resourceTypes,
   onSubmit,
   onCancel,
+  initialName,
+  initialSteps,
+  submitLabel = "Enregistrer",
 }: {
   existingNames: string[];
   resourceTypes: ResourceTypeDto[];
   onSubmit: (name: string, etapes: RecipeStep[]) => Promise<void>;
   onCancel: () => void;
+  initialName?: string;
+  initialSteps?: DraftStep[];
+  submitLabel?: string;
 }) {
-  const [name, setName] = useState("");
-  const [steps, setSteps] = useState<DraftStep[]>([emptyDraft()]);
+  const [name, setName] = useState(initialName ?? "");
+  const [steps, setSteps] = useState<DraftStep[]>(initialSteps ?? [emptyDraft()]);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -235,9 +576,9 @@ function RecipeForm({
         s.uid === stepUid
           ? {
               ...s,
-              ressource: s.ressource.includes(resource)
-                ? s.ressource.filter((r) => r !== resource)
-                : [...s.ressource, resource],
+              resources: s.resources.includes(resource)
+                ? s.resources.filter((r) => r !== resource)
+                : [...s.resources, resource],
             }
           : s,
       ),
@@ -252,7 +593,7 @@ function RecipeForm({
     setSteps((prev) =>
       prev
         .filter((s) => s.uid !== uid)
-        .map((s) => ({ ...s, deps: s.deps.filter((d) => d !== uid) })),
+        .map((s) => ({ ...s, deps: s.dependencies.filter((d) => d !== uid) })),
     );
   }
 
@@ -262,9 +603,9 @@ function RecipeForm({
         s.uid === stepUid
           ? {
               ...s,
-              deps: s.deps.includes(depUid)
-                ? s.deps.filter((d) => d !== depUid)
-                : [...s.deps, depUid],
+              dependencies: s.dependencies.includes(depUid)
+                ? s.dependencies.filter((d) => d !== depUid)
+                : [...s.dependencies, depUid],
             }
           : s,
       ),
@@ -273,13 +614,13 @@ function RecipeForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const uidToIndex = new Map(steps.map((s, i) => [s.uid, i + 1]));
+    const uidToIndex = new Map(steps.map((s, i) => [s.uid, i]));
     const etapes: RecipeStep[] = steps.map((s) => ({
       nom: s.nom.trim(),
-      ressource: s.ressource,
+      resources: s.resources,
       kind: s.kind,
-      duree: Number(s.duree),
-      deps: s.deps
+      duration: Number(s.duration) * 60, // user enters minutes, backend stores seconds
+      dependencies: s.dependencies
         .map((u) => uidToIndex.get(u))
         .filter((n): n is number => typeof n === "number")
         .sort((a, b) => a - b),
@@ -385,8 +726,8 @@ function RecipeForm({
                   <input
                     type="number"
                     min={1}
-                    value={step.duree}
-                    onChange={(e) => updateStep(step.uid, { duree: Number(e.target.value) })}
+                    value={step.duration}
+                    onChange={(e) => updateStep(step.uid, { duration: Number(e.target.value) })}
                     className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm tabular-nums dark:border-zinc-700 dark:bg-zinc-950"
                   />
                 </label>
@@ -401,7 +742,7 @@ function RecipeForm({
                     <span className="text-xs text-zinc-400">Chargement…</span>
                   ) : (
                     resourceTypes.map((r) => {
-                      const checked = step.ressource.includes(r.name);
+                      const checked = step.resources.includes(r.name);
                       return (
                         <button
                           key={r.name}
@@ -431,7 +772,7 @@ function RecipeForm({
                   </span>
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {previousSteps.map((p, pi) => {
-                      const checked = step.deps.includes(p.uid);
+                      const checked = step.dependencies.includes(p.uid);
                       return (
                         <label
                           key={p.uid}
@@ -480,7 +821,7 @@ function RecipeForm({
           disabled={saving}
           className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
-          {saving ? "Enregistrement…" : "Enregistrer"}
+          {saving ? "Enregistrement…" : submitLabel}
         </button>
       </div>
     </form>

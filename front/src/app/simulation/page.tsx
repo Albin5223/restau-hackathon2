@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { GanttChart } from "@/components/GanttChart";
+import { useResources } from "@/components/ResourcesProvider";
+import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
+import type { AutoSimLog, AutoSimStatus } from "@/lib/api";
+import { missingResources } from "@/lib/recipes";
 import type {
   BackendCommandeResult,
+  BackendGanttTask,
   BackendTable,
   Recipe,
   ScheduledStep,
@@ -13,38 +19,260 @@ import type {
 } from "@/lib/types";
 
 type SimMode = "auto" | "manuel";
+type AutoSimParams = {
+  durationMin: number;
+  arrivalRatePerHour: number;
+  avgPartySize: number;
+  speedMultiplier: number;
+};
 
-// ── Mode automatique (simulation fictive) ─────────────────────────────────────
+// ── Conversion tâches backend → ScheduledStep ─────────────────────────────────
 
-type SimState = "idle" | "running" | "done";
+function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
+  const now = Date.now();
+  let status: ScheduledStepStatus = "a_venir";
+  if (task.endAt < now) status = "termine";
+  else if (task.startAt <= now) status = "en_cours";
 
-function AutoSimulation() {
-  const [state, setState] = useState<SimState>("idle");
-  const [progress, setProgress] = useState(0);
-  const [params, setParams] = useState({
-    durationMin: 180,
+  if (task.resourceNames.length === 0) {
+    return [{
+      id: task.id,
+      orderId: task.orderId,
+      tableNumber: task.tableNumber,
+      recipeName: task.dishName,
+      stepName: task.taskName,
+      kind: task.kind,
+      resourceId: `__no_resource__:${task.id}`,
+      resourceLabel: "Sans ressource",
+      startAt: task.startAt,
+      endAt: task.endAt,
+      status,
+    }];
+  }
+
+  return task.resourceNames.map((name, idx) => ({
+    id: idx === 0 ? task.id : `${task.id}__r${idx}`,
+    orderId: task.orderId,
+    tableNumber: task.tableNumber,
+    recipeName: task.dishName,
+    stepName: task.taskName,
+    kind: task.kind,
+    resourceId: name,
+    resourceLabel: name,
+    startAt: task.startAt,
+    endAt: task.endAt,
+    status,
+  }));
+}
+
+// ── Mode automatique ──────────────────────────────────────────────────────────
+
+const LOG_TYPE_STYLES: Record<string, string> = {
+  arrival: "text-emerald-700 dark:text-emerald-400",
+  rejected: "text-red-600 dark:text-red-400",
+  order: "text-sky-700 dark:text-sky-400",
+  served: "text-amber-700 dark:text-amber-400",
+  left: "text-zinc-500 dark:text-zinc-400",
+  info: "text-zinc-600 dark:text-zinc-300",
+  error: "text-red-600 dark:text-red-400 font-semibold",
+};
+
+const LOG_TYPE_LABELS: Record<string, string> = {
+  arrival: "Arrivée",
+  rejected: "Refus",
+  order: "Commande",
+  served: "Servi",
+  left: "Départ",
+  info: "Info",
+  error: "Erreur",
+};
+
+function LogLine({ log }: { log: AutoSimLog }) {
+  const time = new Date(log.timestamp).toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return (
+    <div className="flex gap-3 py-1 text-sm">
+      <span className="shrink-0 font-mono text-xs text-zinc-400">{time}</span>
+      <span className={`shrink-0 w-20 text-xs font-medium uppercase tracking-wide ${LOG_TYPE_STYLES[log.type] ?? ""}`}>
+        {LOG_TYPE_LABELS[log.type] ?? log.type}
+      </span>
+      <span className="text-zinc-700 dark:text-zinc-300">{log.message}</span>
+    </div>
+  );
+}
+
+function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) => void }) {
+  const PARAMS_STORAGE_KEY = "autoSimParams";
+  const { resourceTypes } = useResources();
+  const [status, setStatus] = useState<AutoSimStatus>({ active: false, logs: [] });
+  const [ganttSteps, setGanttSteps] = useState<ScheduledStep[]>([]);
+  const [menu, setMenu] = useState<Recipe[]>([]);
+
+  useEffect(() => {
+    api.dishes.list().then(setMenu).catch(() => {});
+  }, []);
+
+  const unavailableMenuNames = useMemo(
+    () =>
+      menu
+        .filter((d) => missingResources(d, resourceTypes).length > 0)
+        .map((d) => d.name),
+    [menu, resourceTypes],
+  );
+  const [params, setParams] = useState<AutoSimParams>({
+    durationMin: 60,
     arrivalRatePerHour: 8,
     avgPartySize: 3,
+    speedMultiplier: 0.1,
   });
+  const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const prevLogsCountRef = useRef(0);
+  const [logsAutoScroll, setLogsAutoScroll] = useState(true);
+  const paramsLoadedRef = useRef(false);
+  const prevActiveRef = useRef(false);
+  const hasOngoingTasks = useMemo(
+    () => ganttSteps.some((step) => step.endAt > Date.now()),
+    [ganttSteps],
+  );
 
-  function runSimulation() {
-    setState("running");
-    setProgress(0);
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        const next = p + 5;
-        if (next >= 100) {
-          clearInterval(interval);
-          setState("done");
-          return 100;
+  function isValidParams(value: unknown): value is AutoSimParams {
+    if (!value || typeof value !== "object") return false;
+    const v = value as Record<string, unknown>;
+    return [
+      v.durationMin,
+      v.arrivalRatePerHour,
+      v.avgPartySize,
+      v.speedMultiplier,
+    ].every((n) => typeof n === "number" && Number.isFinite(n));
+  }
+
+  function readStoredParams(): AutoSimParams | null {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(PARAMS_STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return isValidParams(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function persistParams(next: AutoSimParams) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(PARAMS_STORAGE_KEY, JSON.stringify(next));
+  }
+
+  function clearPersistedParams() {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(PARAMS_STORAGE_KEY);
+  }
+
+  // Polling du statut de simulation
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const s = await api.simulation.status();
+        if (!cancelled) {
+          setStatus(s);
+          onStatusChange(s.active);
+          if (s.active && !paramsLoadedRef.current) {
+            const stored = readStoredParams();
+            if (stored) setParams(stored);
+            paramsLoadedRef.current = true;
+          }
+          if (!s.active && prevActiveRef.current) {
+            clearPersistedParams();
+            paramsLoadedRef.current = false;
+          }
+          prevActiveRef.current = s.active;
         }
-        return next;
-      });
-    }, 80);
+      } catch {
+        // ignore network errors during polling
+      }
+    }
+
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [onStatusChange]);
+
+  // Polling du Gantt (toutes les 3 secondes)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function pollGantt() {
+      try {
+        const res = await api.cuisine.gantt();
+        if (!cancelled) {
+          setGanttSteps(res.tasks.flatMap(toScheduledSteps));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    pollGantt();
+    const id = setInterval(pollGantt, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  // Auto-scroll des logs vers le bas (seulement si on est déjà en bas)
+  useEffect(() => {
+    const isNewLog = status.logs.length > prevLogsCountRef.current;
+    prevLogsCountRef.current = status.logs.length;
+    if (!isNewLog || !logsAutoScroll) return;
+    const el = logsContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [status.logs, logsAutoScroll]);
+
+  async function handleStart() {
+    if (hasOngoingTasks) return;
+    setStarting(true);
+    setError(null);
+    try {
+      persistParams(params);
+      await api.simulation.start(params);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur au démarrage.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function handleStop() {
+    setStopping(true);
+    setError(null);
+    try {
+      await api.simulation.stop();
+      clearPersistedParams();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur à l'arrêt.");
+    } finally {
+      setStopping(false);
+    }
   }
 
   return (
+    <div className="space-y-6">
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
+      {/* Panneau de paramètres */}
       <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="mb-4 text-base font-semibold text-zinc-900 dark:text-zinc-50">
           Paramètres
@@ -55,18 +283,20 @@ function AutoSimulation() {
             suffix="min"
             value={params.durationMin}
             onChange={(v) => setParams((p) => ({ ...p, durationMin: v }))}
-            min={30}
+            min={5}
             max={480}
-            step={10}
+            step={5}
+            disabled={status.active}
           />
           <Field
-            label="Arrivées (λ)"
+            label="Taux d'arrivées (λ)"
             suffix="/ h"
             value={params.arrivalRatePerHour}
             onChange={(v) => setParams((p) => ({ ...p, arrivalRatePerHour: v }))}
             min={1}
             max={30}
             step={1}
+            disabled={status.active}
           />
           <Field
             label="Taille moyenne du groupe"
@@ -76,76 +306,157 @@ function AutoSimulation() {
             min={1}
             max={8}
             step={1}
+            disabled={status.active}
           />
+          <Field
+            label="Multiplicateur de vitesse"
+            suffix="×"
+            value={params.speedMultiplier}
+            onChange={(v) => setParams((p) => ({ ...p, speedMultiplier: v }))}
+            min={0.01}
+            max={3.0}
+            step={0.01}
+            disabled={status.active}
+          />
+          <p className="text-xs text-zinc-500">
+            {params.speedMultiplier < 1
+              ? `Durées réduites à ${(params.speedMultiplier * 100).toFixed(params.speedMultiplier < 0.1 ? 1 : 0)}% — simulation accélérée`
+              : params.speedMultiplier > 1
+              ? `Durées multipliées par ${params.speedMultiplier.toFixed(2)} — simulation ralentie`
+              : "Durées réelles"}
+          </p>
         </div>
 
-        <button
-          onClick={runSimulation}
-          disabled={state === "running"}
-          className="mt-6 w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          {state === "running" ? "Simulation en cours…" : "Lancer la simulation"}
-        </button>
+        {!status.active && unavailableMenuNames.length > 0 ? (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950">
+            <p className="font-semibold text-amber-900 dark:text-amber-100">
+              {unavailableMenuNames.length} plat
+              {unavailableMenuNames.length > 1 ? "s" : ""} du menu
+              indisponible{unavailableMenuNames.length > 1 ? "s" : ""}
+            </p>
+            <p className="mt-1 text-amber-800 dark:text-amber-300">
+              Les commandes tirant ces plats au hasard seront refusées (log
+              « erreur »). Ajoutez les ressources nécessaires pour une simulation
+              fluide.
+            </p>
+            <Link
+              href="/ressources"
+              className="mt-1.5 inline-block font-semibold text-amber-900 underline decoration-dotted hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100"
+            >
+              → Page Ressources
+            </Link>
+          </div>
+        ) : null}
 
-        {state !== "idle" ? (
-          <div className="mt-4">
-            <div className="mb-1 flex justify-between text-xs text-zinc-500">
-              <span>Avancement</span>
-              <span className="font-mono tabular-nums">{progress}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-900">
-              <div
-                className="h-full bg-zinc-900 transition-all duration-150 dark:bg-zinc-100"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+        {error ? (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            {error}
+          </p>
+        ) : null}
+
+        {!status.active && hasOngoingTasks ? (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            Impossible de lancer la simulation automatique, veuillez{" "}
+            <Link
+              href="/salle"
+              className="font-semibold underline decoration-dotted hover:text-red-700 dark:hover:text-red-200"
+            >
+              libérer toutes les tables
+            </Link>
+            .
+          </p>
+        ) : null}
+
+        <div className="mt-6 space-y-2">
+          {!status.active ? (
+            <button
+              onClick={handleStart}
+              disabled={starting || hasOngoingTasks}
+              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              {starting ? "Démarrage…" : "Lancer la simulation"}
+            </button>
+          ) : (
+            <button
+              onClick={handleStop}
+              disabled={stopping}
+              className="w-full rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              {stopping ? "Arrêt en cours…" : "Arrêter la simulation"}
+            </button>
+          )}
+        </div>
+
+        {status.active ? (
+          <div className="mt-4 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-500" />
+            Simulation en cours
           </div>
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
-        <p className="text-sm text-zinc-500">
-          La simulation automatique (processus de Poisson) sera connectée au
-          backend dans une prochaine itération. Utilisez le{" "}
-          <strong>mode manuel</strong> pour tester le planning en temps réel.
-        </p>
-        <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-zinc-600 dark:text-zinc-400">
-          <li>Arrivées de groupes selon un processus de Poisson de paramètre λ.</li>
-          <li>Taille de groupe : loi uniforme bornée autour de la moyenne.</li>
-          <li>Choix des plats : tirage uniforme dans le menu.</li>
-          <li>Refus si aucune table libre de la bonne taille.</li>
-        </ul>
+      {/* Journal des événements */}
+      <section className="flex flex-col rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="border-b border-zinc-100 px-6 py-4 dark:border-zinc-800">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+            Journal des événements
+          </h2>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            {status.logs.length === 0
+              ? "Lancez la simulation pour voir les événements."
+              : `${status.logs.length} événement(s) enregistré(s)`}
+          </p>
+        </div>
+        <div
+          ref={logsContainerRef}
+          className="min-h-0 flex-1 overflow-y-auto px-6 py-3"
+          style={{ maxHeight: "60vh" }}
+          onScroll={() => {
+            const el = logsContainerRef.current;
+            if (!el) return;
+            const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            setLogsAutoScroll(distanceFromBottom < 24);
+          }}
+        >
+          {status.logs.length === 0 ? (
+            <p className="py-8 text-center text-sm text-zinc-400">
+              Aucun événement pour l&apos;instant.
+            </p>
+          ) : (
+            <div className="divide-y divide-zinc-50 dark:divide-zinc-900">
+              {status.logs.map((log, i) => (
+                <LogLine key={i} log={log} />
+              ))}
+            </div>
+          )}
+          <div ref={logsEndRef} />
+        </div>
       </section>
+    </div>
+
+    {/* Gantt de cuisine en temps réel */}
+    {ganttSteps.length > 0 ? (
+      <section>
+        <h2 className="mb-3 text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          Planning cuisine en temps réel
+        </h2>
+        <GanttChart steps={ganttSteps} />
+      </section>
+    ) : null}
     </div>
   );
 }
 
 // ── Mode manuel ───────────────────────────────────────────────────────────────
 
-function toScheduledStep(task: BackendCommandeResult["scheduledTasks"][0]): ScheduledStep {
-  const now = Date.now();
-  let status: ScheduledStepStatus = "a_venir";
-  if (task.endAt < now) status = "termine";
-  else if (task.startAt <= now) status = "en_cours";
-  return {
-    id: task.id,
-    orderId: task.commandeId,
-    tableNumber: task.tableNumber,
-    recipeName: task.dishName,
-    kind: task.kind,
-    resourceId: task.resourceName,
-    resourceLabel: task.resourceName,
-    startAt: task.startAt,
-    endAt: task.endAt,
-    status,
-  };
-}
-
-function ManualSimulation() {
+function ManualSimulation({ blocked }: { blocked: boolean }) {
+  const { resourceTypes } = useResources();
+  const { shiftVersion } = useTime();
   const [tables, setTables] = useState<BackendTable[]>([]);
   const [dishes, setDishes] = useState<Recipe[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [dishSelections, setDishSelections] = useState<(number | null)[]>([null]);
+  const [speedMultiplier, setSpeedMultiplier] = useState(1.0);
   const [result, setResult] = useState<BackendCommandeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -158,6 +469,69 @@ function ManualSimulation() {
       })
       .catch(console.error);
   }, []);
+
+  // Après un voyage temporel, les horaires de la commande affichée sont
+  // décalés en base ; on rafraîchit le résultat depuis le Gantt courant.
+  useEffect(() => {
+    if (!result) return;
+    let cancelled = false;
+    api.cuisine
+      .gantt()
+      .then((res) => {
+        if (cancelled) return;
+        const myTasks = res.tasks.filter((t) => t.orderId === result.orderId);
+        if (myTasks.length === 0) return; // commande clôturée → on garde tel quel
+        const serviceTimeAt = Math.max(...myTasks.map((t) => t.endAt));
+        setResult({
+          orderId: result.orderId,
+          tableNumber: result.tableNumber,
+          serviceTimeAt,
+          scheduledTasks: myTasks,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // On dépend seulement de shiftVersion et de result.orderId pour éviter une boucle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shiftVersion, result?.orderId]);
+
+  // Indisponibilité par plat : id → ressources manquantes
+  const unavailableById = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const d of dishes) {
+      const m = missingResources(d, resourceTypes);
+      if (m.length > 0) map.set(d.id, m);
+    }
+    return map;
+  }, [dishes, resourceTypes]);
+
+  const selectedUnavailable = useMemo(
+    () =>
+      dishSelections
+        .filter((id): id is number => id !== null)
+        .map((id) => ({ id, dish: dishes.find((d) => d.id === id) }))
+        .filter(({ id }) => unavailableById.has(id))
+        .map(({ dish, id }) => ({
+          name: dish?.name ?? `#${id}`,
+          missing: unavailableById.get(id) ?? [],
+        })),
+    [dishSelections, dishes, unavailableById],
+  );
+
+  if (blocked) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center dark:border-amber-800 dark:bg-amber-950">
+        <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+          Simulation automatique active
+        </p>
+        <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+          Les commandes manuelles sont désactivées pendant la simulation automatique. Arrêtez-la pour reprendre le mode manuel.
+        </p>
+      </div>
+    );
+  }
 
   const availableTables = tables.filter(
     (t) => t.status === "libre" || t.status === "commande_passee",
@@ -192,9 +566,8 @@ function ManualSimulation() {
     setError(null);
     setResult(null);
     try {
-      const res = await api.commandes.place(selectedTableId, dishIds);
+      const res = await api.orders.place(selectedTableId, dishIds, speedMultiplier);
       setResult(res);
-      // refresh tables to reflect new status
       setTables(await api.tables.list());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur lors de la commande.");
@@ -204,11 +577,34 @@ function ManualSimulation() {
   }
 
   const ganttSteps: ScheduledStep[] = result
-    ? result.scheduledTasks.map(toScheduledStep)
+    ? result.scheduledTasks.flatMap(toScheduledSteps)
     : [];
 
   return (
     <div className="space-y-6">
+      {/* Multiplicateur de vitesse */}
+      <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-4 text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          Multiplicateur de durée des étapes
+        </h2>
+        <Field
+          label="Facteur de temps"
+          suffix="×"
+          value={speedMultiplier}
+          onChange={(v) => setSpeedMultiplier(v)}
+          min={0.01}
+          max={3.0}
+          step={0.01}
+        />
+        <p className="mt-2 text-xs text-zinc-500">
+          {speedMultiplier < 1
+            ? `Durées réduites à ${(speedMultiplier * 100).toFixed(speedMultiplier < 0.1 ? 1 : 0)}% — simulation accélérée`
+            : speedMultiplier > 1
+            ? `Durées multipliées par ${speedMultiplier.toFixed(2)} — simulation ralentie`
+            : "Durées réelles"}
+        </p>
+      </section>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Sélection de table */}
         <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
@@ -273,27 +669,64 @@ function ManualSimulation() {
             </p>
           ) : (
             <div className="space-y-3">
-              {dishSelections.map((selected, i) => (
-                <label key={i} className="block">
-                  <span className="text-xs font-medium text-zinc-500">
-                    Couvert {i + 1}
-                  </span>
-                  <select
-                    value={selected ?? ""}
-                    onChange={(e) =>
-                      setDish(i, e.target.value ? Number(e.target.value) : null)
-                    }
-                    className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                  >
-                    <option value="">— Sélectionner un plat —</option>
-                    {dishes.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
+              {dishSelections.map((selected, i) => {
+                const isUnavail =
+                  selected !== null && unavailableById.has(selected);
+                return (
+                  <label key={i} className="block">
+                    <span className="text-xs font-medium text-zinc-500">
+                      Couvert {i + 1}
+                    </span>
+                    <select
+                      value={selected ?? ""}
+                      onChange={(e) =>
+                        setDish(i, e.target.value ? Number(e.target.value) : null)
+                      }
+                      className={`mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm dark:bg-zinc-900 ${
+                        isUnavail
+                          ? "border-amber-400 text-amber-900 dark:border-amber-700 dark:text-amber-200"
+                          : "border-zinc-300 dark:border-zinc-700"
+                      }`}
+                    >
+                      <option value="">— Sélectionner un plat —</option>
+                      {dishes.map((d) => {
+                        const unavail = unavailableById.has(d.id);
+                        return (
+                          <option key={d.id} value={d.id} disabled={unavail}>
+                            {d.name}
+                            {unavail
+                              ? ` — indispo. (${(unavailableById.get(d.id) ?? []).join(", ")})`
+                              : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                );
+              })}
+
+              {selectedUnavailable.length > 0 ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950">
+                  <p className="font-semibold text-amber-900 dark:text-amber-100">
+                    {selectedUnavailable.length} plat
+                    {selectedUnavailable.length > 1 ? "s" : ""} indisponible
+                    {selectedUnavailable.length > 1 ? "s" : ""} dans la sélection
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-amber-800 dark:text-amber-300">
+                    {selectedUnavailable.map((u, idx) => (
+                      <li key={idx}>
+                        • {u.name} — manque : {u.missing.join(", ")}
+                      </li>
                     ))}
-                  </select>
-                </label>
-              ))}
+                  </ul>
+                  <Link
+                    href="/ressources"
+                    className="mt-1.5 inline-block font-semibold text-amber-900 underline decoration-dotted hover:text-amber-700 dark:text-amber-200 dark:hover:text-amber-100"
+                  >
+                    → Ajouter les ressources manquantes
+                  </Link>
+                </div>
+              ) : null}
 
               {error ? (
                 <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
@@ -303,7 +736,11 @@ function ManualSimulation() {
 
               <button
                 onClick={placeOrder}
-                disabled={loading || !selectedTableId}
+                disabled={
+                  loading ||
+                  !selectedTableId ||
+                  selectedUnavailable.length > 0
+                }
                 className="mt-2 w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
                 {loading ? "Planification en cours…" : "Passer la commande"}
@@ -329,7 +766,7 @@ function ManualSimulation() {
                 })}
               </span>
               {" · "}
-              <span className="font-mono text-xs opacity-70">{result.commandeId}</span>
+              <span className="font-mono text-xs opacity-70">{result.orderId}</span>
             </p>
           </div>
           <GanttChart steps={ganttSteps} />
@@ -343,6 +780,31 @@ function ManualSimulation() {
 
 export default function SimulationPage() {
   const [mode, setMode] = useState<SimMode>("manuel");
+  const [isAutoActive, setIsAutoActive] = useState(false);
+  const hasInitializedMode = useRef(false);
+
+  // Poll status even when on the manual tab so the warning appears immediately
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const s = await api.simulation.status();
+        if (!cancelled) {
+          setIsAutoActive(s.active);
+          if (!hasInitializedMode.current) {
+            hasInitializedMode.current = true;
+            if (s.active) setMode("auto");
+          }
+        }
+      } catch {}
+    }
+    poll();
+    const id = setInterval(poll, 2_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   return (
     <>
@@ -351,7 +813,7 @@ export default function SimulationPage() {
         subtitle={
           mode === "manuel"
             ? "Mode manuel — passez une commande et visualisez le planning"
-            : "Simulation à événements discrets en boucle fermée (générateur Poisson)"
+            : "Simulation à événements discrets en boucle fermée (processus de Poisson)"
         }
         actions={
           <div className="flex gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900">
@@ -366,6 +828,9 @@ export default function SimulationPage() {
                 }`}
               >
                 {m === "manuel" ? "Manuel" : "Automatique"}
+                {m === "auto" && isAutoActive ? (
+                  <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle" />
+                ) : null}
               </button>
             ))}
           </div>
@@ -373,7 +838,11 @@ export default function SimulationPage() {
       />
 
       <div className="p-8">
-        {mode === "manuel" ? <ManualSimulation /> : <AutoSimulation />}
+        {mode === "manuel" ? (
+          <ManualSimulation blocked={isAutoActive} />
+        ) : (
+          <AutoSimulation onStatusChange={setIsAutoActive} />
+        )}
       </div>
     </>
   );
@@ -387,6 +856,7 @@ function Field({
   min,
   max,
   step,
+  disabled,
 }: {
   label: string;
   suffix: string;
@@ -395,6 +865,7 @@ function Field({
   min: number;
   max: number;
   step: number;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -410,8 +881,9 @@ function Field({
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-zinc-900 dark:accent-zinc-100"
+        className="w-full accent-zinc-900 disabled:opacity-50 dark:accent-zinc-100"
       />
     </label>
   );

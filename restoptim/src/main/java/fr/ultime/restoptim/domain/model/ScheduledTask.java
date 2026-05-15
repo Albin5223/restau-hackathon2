@@ -1,16 +1,25 @@
 package fr.ultime.restoptim.domain.model;
 
+import fr.ultime.restoptim.domain.model.dish.DishId;
+import fr.ultime.restoptim.domain.model.job.JobId;
+import fr.ultime.restoptim.domain.model.task.TaskId;
+import fr.ultime.restoptim.domain.model.task.TaskType;
+import lombok.Builder;
+
 import java.util.List;
 
+
+@Builder(setterPrefix = "with")
 public record ScheduledTask(
-        String jobId,
-        int dishId,
+        JobId jobId,
+        DishId dishId,
         String dishName,
-        int taskId,
+        TaskId taskId,
         String taskName,
-        TaskKind kind,
-        long startMinute,
-        long endMinute,
+        TaskType kind,
+        long startSecond,
+        long endSecond,
         List<ResourceType> resources,
-        String assignedResourceName) {
+        List<String> assignedResourceNames
+) {
 }

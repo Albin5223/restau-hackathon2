@@ -50,17 +50,17 @@ const GraphCtx = createContext<GraphCtxValue | null>(null);
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const KINDS = [
-  { value: "preparation", label: "Préparation" },
-  { value: "cuisson", label: "Cuisson" },
-  { value: "dressage", label: "Dressage" },
-  { value: "other", label: "Autre" },
+  { value: "PREPARATION", label: "Préparation" },
+  { value: "COOKING", label: "Cuisson" },
+  { value: "PLATING", label: "Dressage" },
+  { value: "OTHER", label: "Autre" },
 ];
 
 const KIND_COLORS: Record<string, string> = {
-  preparation: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  cuisson: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
-  dressage: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  other: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+  PREPARATION: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  COOKING: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  PLATING: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  OTHER: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
 const EDGE_STYLE = {
@@ -79,7 +79,7 @@ function makeNode(id: string, position: { x: number; y: number }): Node {
     id,
     type: "stepNode",
     position,
-    data: { nom: "", kind: "preparation", ressource: [], duree: 5 } as StepFields,
+    data: { nom: "", kind: "PREPARATION", ressource: [], duree: 5 } as StepFields,
   };
 }
 
@@ -360,18 +360,18 @@ function RecipeGraphEditorInner({
       return;
     }
 
-    // Assign 1-based indices in topological order, then build etapes
+    // Assign 0-based indices in topological order, then build etapes
     const indexMap = new Map<string, number>();
-    topoOrder.forEach((id, i) => indexMap.set(id, i + 1));
+    topoOrder.forEach((id, i) => indexMap.set(id, i));
 
     const etapes: RecipeStep[] = topoOrder.map((id) => {
       const node = currentNodes.find((n) => n.id === id)!;
       const d = node.data as unknown as StepFields;
-      const deps = (depsMap.get(id) ?? [])
-        .map((depId) => indexMap.get(depId) ?? 0)
-        .filter((x) => x > 0)
+      const dependencies = (depsMap.get(id) ?? [])
+        .map((depId) => indexMap.get(depId) ?? -1)
+        .filter((x) => x >= 0)
         .sort((a, b) => a - b);
-      return { nom: d.nom.trim(), kind: d.kind, ressource: d.ressource, duree: d.duree, deps };
+      return { nom: d.nom.trim(), kind: d.kind, resources: d.ressource, duration: d.duree * 60, dependencies }; // user enters minutes, backend stores seconds
     });
 
     const errs = validateRecipe(name, etapes, existingNames);

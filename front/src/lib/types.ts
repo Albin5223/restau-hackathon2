@@ -4,9 +4,9 @@
 // `deps` references step positions in `etapes` (1-based, like the seed data).
 export type RecipeStep = {
   nom: string;
-  ressource: string[];
-  duree: number;
-  deps: number[];
+  resources: string[];
+  duration: number;
+  dependencies: number[];
   kind?: string;
 };
 
@@ -18,7 +18,7 @@ export type ResourceTypeDto = {
 export type Recipe = {
   id: number;
   name: string;
-  tasks: { etapes: RecipeStep[] };
+  tasks: RecipeStep[];
 };
 
 export type TableStatus =
@@ -34,7 +34,7 @@ export type BackendTable = {
   seats: number;
   status: TableStatus;
   partySize: number | null;
-  commandeId: string | null;
+  orderId: string | null;
 };
 
 // StepKind used for Gantt colour coding
@@ -47,6 +47,7 @@ export type ScheduledStep = {
   orderId: string;
   tableNumber: number;
   recipeName: string;
+  stepName: string;
   kind: StepKind;
   resourceId: string;
   resourceLabel: string;
@@ -58,12 +59,12 @@ export type ScheduledStep = {
 // Backend Gantt payload
 export type BackendGanttTask = {
   id: string;
-  commandeId: string;
+  orderId: string;
   tableNumber: number;
   dishName: string;
   taskName: string;
   kind: StepKind;
-  resourceName: string;
+  resourceNames: string[];
   startAt: number;
   endAt: number;
 };
@@ -74,7 +75,7 @@ export type BackendGanttResponse = {
 };
 
 export type BackendCommandeResult = {
-  commandeId: string;
+  orderId: string;
   tableNumber: number;
   serviceTimeAt: number;
   scheduledTasks: BackendGanttTask[];

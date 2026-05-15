@@ -1,18 +1,47 @@
+app:
+  cors:
+    allowed-origins: "http://localhost:3000,https://restoptim.albin-paris.fr"
+
 spring:
   application:
     name: restoptim
-  datasource:
-    url: jdbc:sqlite:./data/restoptim.db
-    driver-class-name: org.sqlite.JDBC
-    hikari:
-      connection-init-sql: PRAGMA foreign_keys=ON
-  sql:
-    init:
-      mode: always
-  jpa:
-    defer-datasource-initialization: true
-    hibernate:
-      ddl-auto: none
-    properties:
-      hibernate:
-        dialect: org.hibernate.community.dialect.SQLiteDialect
+
+
+restoptim:
+  scheduler:
+    # ── Solveur ────────────────────────────────────────────────────────────────
+    # Temps maximum accordé au solveur CP-SAT pour trouver une solution (secondes).
+    max-solve-seconds: 5
+
+    # ── Seuils de fraîcheur des plats ──────────────────────────────────────────
+    # Délai maximum accepté entre la fin d'une cuisson et le début du dressage (secondes).
+    # Cette contrainte est DOUCE (pénalisée dans l'objectif, pas imposée strictement)
+    # pour garantir que le planificateur trouve toujours une solution même avec
+    # beaucoup de plats. L'optimiseur minimise quand même ce délai.
+    tolerance-cooking-before-plating-seconds: 600
+
+    # ── Synchronisation de la table ────────────────────────────────────────────
+    # Fenêtre minimale (secondes) dans laquelle tous les dressages d'une commande
+    # doivent se terminer. Étendue automatiquement si le chef ne peut pas dresser
+    # tous les plats dans cette fenêtre (ex. 8 plats × 120s = 960s minimum).
+    tolerance-plating-before-service-seconds: 180
+
+    # ── Objectif d'optimisation ────────────────────────────────────────────────
+    # Poids de chaque terme dans la fonction objectif minimisée par CP-SAT.
+    # Augmenter un poids = l'optimiseur accorde plus d'importance à ce critère.
+    objective-weight-service-time: 1000  # minimiser le temps d'attente total (priorité principale)
+    objective-weight-service-gap: 50     # minimiser l'écart entre le premier et le dernier dressage
+    objective-weight-cooking-gap: 50     # minimiser le délai entre fin de cuisson et dressage
+
+    # ── Technique ──────────────────────────────────────────────────────────────
+    # Marge ajoutée à l'horizon temporel du modèle CP-SAT (secondes).
+    horizon-padding-seconds: 900
+
+server:
+  error:
+    include-message: always
+
+logging:
+  level:
+    fr.ultime.restoptim: DEBUG
+    org.springframework.web: INFO

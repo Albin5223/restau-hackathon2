@@ -1,41 +1,40 @@
-import type { Recipe, RecipeStep } from "./types";
+import type { Recipe, RecipeStep, ResourceTypeDto } from "./types";
 
 // Compute earliest start/end for each step given the dependency DAG.
 // `deps` are 1-based indices into etapes (matching the DB seed format).
-// Returns the critical path total (minutes) and per-step timings.
+// Returns the critical path total (seconds) and per-step timings.
 export type StepTiming = {
-  startMin: number;
-  endMin: number;
+  startSec: number;
+  endSec: number;
 };
 
 export function computeSchedule(recipe: Recipe): {
-  totalMin: number;
+  totalSec: number;
   timings: StepTiming[];
 } {
-  const { etapes } = recipe.tasks;
-  const timings: StepTiming[] = etapes.map(() => ({ startMin: 0, endMin: 0 }));
+  const timings: StepTiming[] = recipe.tasks.map(() => ({ startSec: 0, endSec: 0 }));
 
   // Topological order isn't strictly required if we resolve recursively
   // with memoisation. We expect tiny DAGs (a few steps), so we'll loop
   // until a fixpoint to avoid an explicit topo sort.
   let changed = true;
-  let safety = etapes.length * etapes.length + 10;
+  let safety = recipe.tasks.length * recipe.tasks.length + 10;
   while (changed && safety-- > 0) {
     changed = false;
-    for (let i = 0; i < etapes.length; i++) {
-      const step = etapes[i];
-      const depEnds = step.deps.map((d) => timings[d - 1]?.endMin ?? 0);
+    for (let i = 0; i < recipe.tasks.length; i++) {
+      const step = recipe.tasks[i];
+      const depEnds = step.dependencies.map((d) => timings[d - 1]?.endSec ?? 0);
       const start = depEnds.length ? Math.max(...depEnds) : 0;
-      const end = start + step.duree;
-      if (timings[i].startMin !== start || timings[i].endMin !== end) {
-        timings[i] = { startMin: start, endMin: end };
+      const end = start + step.duration;
+      if (timings[i].startSec !== start || timings[i].endSec !== end) {
+        timings[i] = { startSec: start, endSec: end };
         changed = true;
       }
     }
   }
 
-  const totalMin = timings.reduce((m, t) => Math.max(m, t.endMin), 0);
-  return { totalMin, timings };
+  const totalSec = timings.reduce((m, t) => Math.max(m, t.endSec), 0);
+  return { totalSec, timings };
 }
 
 export function assignTracks(
@@ -45,18 +44,18 @@ export function assignTracks(
   const trackEnds: number[] = [];
 
   for (let i = 0; i < timings.length; i++) {
-    const { startMin, endMin } = timings[i];
+    const { startSec, endSec } = timings[i];
     let assigned = -1;
     for (let t = 0; t < trackEnds.length; t++) {
-      if (trackEnds[t] <= startMin) {
+      if (trackEnds[t] <= startSec) {
         assigned = t;
-        trackEnds[t] = endMin;
+        trackEnds[t] = endSec;
         break;
       }
     }
     if (assigned === -1) {
       assigned = trackEnds.length;
-      trackEnds.push(endMin);
+      trackEnds.push(endSec);
     }
     tracks[i] = assigned;
   }
@@ -82,12 +81,10 @@ export function validateRecipe(
     const pos = i + 1;
     if (!step.nom.trim())
       errors.push(`Étape ${pos} : le nom est obligatoire.`);
-    if (step.ressource.length === 0)
-      errors.push(`Étape ${pos} : au moins une ressource.`);
-    if (!(step.duree > 0))
+    if (!(step.duration > 0))
       errors.push(`Étape ${pos} : la durée doit être > 0.`);
-    for (const d of step.deps) {
-      if (d < 1 || d > steps.length)
+    for (const d of step.dependencies) {
+      if (d < 0 || d >= steps.length)
         errors.push(`Étape ${pos} : dépendance ${d} invalide.`);
       if (d === pos) errors.push(`Étape ${pos} : ne peut pas dépendre d'elle-même.`);
       if (d > pos)
@@ -102,8 +99,21 @@ export function validateRecipe(
 
 export function allResources(recipe: Recipe): string[] {
   const set = new Set<string>();
-  for (const step of recipe.tasks.etapes) {
-    for (const r of step.ressource) set.add(r);
+  for (const step of recipe.tasks) {
+    for (const r of step.resources) set.add(r);
   }
   return [...set];
 }
+
+/**
+ * Liste des ressources requises par la recette dont la capacité est nulle
+ * (type inconnu ou 0 instance). Renvoie [] si le plat est entièrement servable.
+ */
+export function missingResources(
+  recipe: Recipe,
+  resourceTypes: ResourceTypeDto[],
+): string[] {
+  const capacities = new Map(resourceTypes.map((t) => [t.name, t.capacity]));
+  return allResources(recipe).filter((r) => (capacities.get(r) ?? 0) <= 0);
+}
+

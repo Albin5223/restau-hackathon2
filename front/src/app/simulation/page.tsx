@@ -130,7 +130,7 @@ function StatBox({ label, value, highlight }: { label: string; value: string | n
   );
 }
 
-function StatsPanel({ stats, isLive }: { stats: SimulationStats; isLive: boolean }) {
+function StatsPanel({ stats, isLive, onDismiss }: { stats: SimulationStats; isLive: boolean; onDismiss?: () => void }) {
   const [tab, setTab] = useState<"stats" | "charts">("stats");
   const totalWaitSec = Math.round(stats.avgWaitTimeSec);
   const waitMin = Math.floor(totalWaitSec / 60);
@@ -154,9 +154,20 @@ function StatsPanel({ stats, isLive }: { stats: SimulationStats; isLive: boolean
               En direct
             </span>
           ) : (
-            <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-              Résultats finaux
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                Résultats finaux
+              </span>
+              {onDismiss && (
+                <button
+                  onClick={onDismiss}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                  title="Effacer les statistiques"
+                >
+                  Effacer
+                </button>
+              )}
+            </div>
           )}
         </div>
         <div className="flex gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-0.5 text-sm dark:border-zinc-700 dark:bg-zinc-900">
@@ -309,9 +320,26 @@ function StatsPanel({ stats, isLive }: { stats: SimulationStats; isLive: boolean
 
 function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) => void }) {
   const PARAMS_STORAGE_KEY = "autoSimParams";
+  const FINAL_STATS_KEY = "autoSimFinalStats";
   const { resourceTypes } = useResources();
   const [status, setStatus] = useState<AutoSimStatus>({ active: false, logs: [], stats: EMPTY_STATS });
-  const [finalStats, setFinalStats] = useState<SimulationStats | null>(null);
+
+  function readStoredFinalStats(): SimulationStats | null {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(FINAL_STATS_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== "object") return null;
+      const s = parsed as Record<string, unknown>;
+      if (typeof s.totalArrivals !== "number" || !Array.isArray(s.recentWaitTimes)) return null;
+      return parsed as SimulationStats;
+    } catch {
+      return null;
+    }
+  }
+
+  const [finalStats, setFinalStats] = useState<SimulationStats | null>(() => readStoredFinalStats());
   const [ganttSteps, setGanttSteps] = useState<ScheduledStep[]>([]);
   const [menu, setMenu] = useState<Recipe[]>([]);
 
@@ -396,6 +424,7 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
           }
           if (!s.active && prevActiveRef.current) {
             setFinalStats(s.stats);
+            window.localStorage.setItem(FINAL_STATS_KEY, JSON.stringify(s.stats));
             clearPersistedParams();
             paramsLoadedRef.current = false;
           }
@@ -452,6 +481,7 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
     setStarting(true);
     setError(null);
     setFinalStats(null);
+    window.localStorage.removeItem(FINAL_STATS_KEY);
     try {
       persistParams(params);
       await api.simulation.start(params);
@@ -645,6 +675,10 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
       <StatsPanel
         stats={status.active ? status.stats : finalStats!}
         isLive={status.active}
+        onDismiss={!status.active ? () => {
+          setFinalStats(null);
+          window.localStorage.removeItem(FINAL_STATS_KEY);
+        } : undefined}
       />
     ) : null}
 

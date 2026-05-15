@@ -2,9 +2,9 @@ package fr.ultime.restoptim.domain.model;
 
 public record SimTimePoint(
         long elapsedSimSec,
-        int arrivals,
-        int ordersPlaced,
-        int tablesServed,
-        int rejected,
+        int ordersInKitchen,
+        int tablesOccupied,
+        int totalArrivals,
+        int totalRejected,
         double avgWaitSec
 ) {}

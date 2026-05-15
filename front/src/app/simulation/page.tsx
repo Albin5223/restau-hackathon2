@@ -200,31 +200,48 @@ function StatsPanel({ stats, isLive }: { stats: SimulationStats; isLive: boolean
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-md bg-zinc-50 p-4 dark:bg-zinc-900">
-          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
             Temps d&apos;attente moyen (arrivée → service)
           </p>
-          {stats.avgWaitTimeSec > 0 ? (
-            <p className="text-2xl font-mono font-bold text-zinc-900 dark:text-zinc-50">
-              {waitMin > 0 ? `${waitMin} min ` : ""}
-              {waitSec} s
-            </p>
-          ) : (
+          {stats.avgWaitTimeSec > 0 ? (() => {
+            const thresholds = [
+              { max: 600,  label: "Excellent",  bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+              { max: 1200, label: "Acceptable", bar: "bg-amber-400",   text: "text-amber-600 dark:text-amber-400",    bg: "bg-amber-50 dark:bg-amber-950/40" },
+              { max: Infinity, label: "Élevé",  bar: "bg-red-500",     text: "text-red-600 dark:text-red-400",        bg: "bg-red-50 dark:bg-red-950/40" },
+            ];
+            const t = thresholds.find((th) => stats.avgWaitTimeSec < th.max)!;
+            const barPct = Math.min(100, (stats.avgWaitTimeSec / 1800) * 100);
+            return (
+              <div className={`rounded-md px-3 py-2 ${t.bg}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={`text-2xl font-mono font-bold ${t.text}`}>
+                    {waitMin > 0 ? `${waitMin}m ` : ""}{waitSec}s
+                  </span>
+                  <span className={`text-xs font-semibold ${t.text}`}>{t.label}</span>
+                </div>
+                <div className="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700">
+                  <div className={`h-1.5 rounded-full transition-all ${t.bar}`} style={{ width: `${barPct}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-zinc-400">Seuil cible : 10 min (600 s)</p>
+              </div>
+            );
+          })() : (
             <p className="text-sm text-zinc-400">Aucune table servie pour l&apos;instant</p>
           )}
           {stats.recentWaitTimes.length > 0 && (
             <div className="mt-3 space-y-1">
               <p className="text-xs text-zinc-400">Dernières commandes servies :</p>
-              <div className="max-h-36 overflow-y-auto space-y-0.5">
-                {[...stats.recentWaitTimes].reverse().map((w: WaitEntry, i: number) => {
+              <div className="max-h-32 overflow-y-auto space-y-0.5">
+                {[...stats.recentWaitTimes].reverse().slice(0, 20).map((w: WaitEntry, i: number) => {
                   const m = Math.floor(w.waitTimeSec / 60);
                   const s = Math.round(w.waitTimeSec % 60);
+                  const aboveAvg = stats.avgWaitTimeSec > 0 && w.waitTimeSec > stats.avgWaitTimeSec;
                   return (
                     <div key={i} className="flex justify-between text-xs">
                       <span className="text-zinc-500 dark:text-zinc-400">
-                        T{w.tableNumber}
-                        {w.partySize > 0 ? ` · ${w.partySize} pers.` : ""}
+                        T{w.tableNumber}{w.partySize > 0 ? ` · ${w.partySize}p` : ""}
                       </span>
-                      <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                      <span className={`font-mono font-medium ${aboveAvg ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                         {m > 0 ? `${m}m ` : ""}{s}s
                       </span>
                     </div>

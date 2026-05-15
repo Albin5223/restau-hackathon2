@@ -315,9 +315,12 @@ public class AutoSimulationService {
                 long elapsedSimSec = (long) ((now - simStartRealMs) / speed / 1000);
                 int wc = waitCount.get();
                 double avgWait = wc > 0 ? totalWaitTimeMs.get() / 1000.0 / wc : 0.0;
+                int ordersInKitchen = Math.max(0, totalOrdersPlaced.get() - totalTablesServed.get());
+                int tablesOccupied = (int) tables.getTables().stream()
+                        .filter(t -> t.status() != TableStatus.LIBRE).count();
                 SimTimePoint point = new SimTimePoint(elapsedSimSec,
-                        totalArrivals.get(), totalOrdersPlaced.get(),
-                        totalTablesServed.get(), totalRejected.get(), avgWait);
+                        ordersInKitchen, tablesOccupied,
+                        totalArrivals.get(), totalRejected.get(), avgWait);
                 synchronized (timeSeries) {
                     timeSeries.add(point);
                     if (timeSeries.size() > 300) timeSeries.remove(0);

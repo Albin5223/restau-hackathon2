@@ -21,10 +21,10 @@ export type WaitEntry = {
 
 export type SimTimePoint = {
   elapsedSimSec: number;
-  arrivals: number;
-  ordersPlaced: number;
-  tablesServed: number;
-  rejected: number;
+  ordersInKitchen: number;
+  tablesOccupied: number;
+  totalArrivals: number;
+  totalRejected: number;
   avgWaitSec: number;
 };
 

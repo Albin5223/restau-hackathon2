@@ -2,18 +2,23 @@
 
 import type { SimTimePoint, WaitEntry } from "@/lib/api";
 
+// ── Palette ───────────────────────────────────────────────────────────────────
+
 const C = {
-  arrivals: "#10b981",
   orders: "#3b82f6",
-  served: "#f59e0b",
+  tables: "#f59e0b",
   rejected: "#ef4444",
-  waitDot: "#8b5cf6",
-  waitAvg: "#94a3b8",
+  above: "#ef4444",
+  below: "#10b981",
+  movingAvg: "#8b5cf6",
+  globalAvg: "#94a3b8",
 };
 
-const VW = 560;
-const VH = 170;
-const P = { t: 8, r: 12, b: 28, l: 40 };
+// ── SVG helpers ───────────────────────────────────────────────────────────────
+
+const VW = 400;
+const VH = 140;
+const P = { t: 6, r: 8, b: 26, l: 34 };
 const IW = VW - P.l - P.r;
 const IH = VH - P.t - P.b;
 
@@ -23,29 +28,67 @@ function niceMax(v: number) {
   return Math.ceil(v / exp) * exp;
 }
 
-function yAxis(max: number) {
-  const n = Math.min(5, max + 1);
-  return Array.from({ length: n }, (_, i) => Math.round((max * i) / (n - 1)));
+function yTicks(max: number, n = 4): number[] {
+  return Array.from({ length: n + 1 }, (_, i) => Math.round((max * i) / n));
 }
 
-function formatSec(s: number) {
+function fmtSec(s: number) {
   const m = Math.floor(s / 60);
-  const sec = Math.round(s % 60);
-  return m > 0 ? `${m}m${sec > 0 ? ` ${sec}s` : ""}` : `${sec}s`;
+  return m > 0 ? `${m}m` : `${Math.round(s)}s`;
 }
 
-function formatMin(sec: number) {
-  const m = Math.round(sec / 60);
-  return `${m}min`;
+function fmtMin(sec: number) {
+  return `${Math.round(sec / 60)}m`;
 }
 
-// ── Flux chart ────────────────────────────────────────────────────────────────
+function Axes({
+  maxY,
+  maxX,
+  minX,
+  yFmt,
+  xFmt,
+}: {
+  maxY: number;
+  maxX: number;
+  minX: number;
+  yFmt: (v: number) => string;
+  xFmt: (v: number) => string;
+}) {
+  const ticks = yTicks(maxY);
+  const xVals = [0, 0.25, 0.5, 0.75, 1].map((r) => minX + (maxX - minX) * r);
+  const scY = (y: number) => IH - (y / maxY) * IH;
+  const scX = (x: number) => ((x - minX) / Math.max(maxX - minX, 1)) * IW;
+  return (
+    <>
+      {ticks.map((y) => (
+        <g key={y}>
+          <line
+            x1={0} y1={scY(y)} x2={IW} y2={scY(y)}
+            className="stroke-zinc-200 dark:stroke-zinc-700" strokeWidth={1}
+          />
+          <text x={-3} y={scY(y) + 4} textAnchor="end" fontSize={9}
+            className="fill-zinc-400 dark:fill-zinc-500">
+            {yFmt(y)}
+          </text>
+        </g>
+      ))}
+      {xVals.map((x, i) => (
+        <text key={i} x={scX(x)} y={IH + 17} textAnchor="middle" fontSize={9}
+          className="fill-zinc-400 dark:fill-zinc-500">
+          {xFmt(x)}
+        </text>
+      ))}
+    </>
+  );
+}
 
-function FluxChart({ points }: { points: SimTimePoint[] }) {
+// ── Chart 1: activité en temps réel ──────────────────────────────────────────
+
+function ActivityChart({ points }: { points: SimTimePoint[] }) {
   if (points.length < 2) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-400">
-        La simulation doit être active quelques secondes…
+      <p className="flex items-center justify-center h-[90px] text-xs text-zinc-400">
+        En attente de données…
       </p>
     );
   }
@@ -54,213 +97,113 @@ function FluxChart({ points }: { points: SimTimePoint[] }) {
   const minX = xs[0];
   const maxX = xs[xs.length - 1];
   const rawMax = Math.max(
-    ...points.flatMap((p) => [p.arrivals, p.ordersPlaced, p.tablesServed, p.rejected]),
+    ...points.flatMap((p) => [p.ordersInKitchen, p.tablesOccupied]),
     1,
   );
   const maxY = niceMax(rawMax);
-  const ticks = yAxis(maxY);
-  const xCount = 5;
-  const xVals = Array.from(
-    { length: xCount },
-    (_, i) => minX + ((maxX - minX) * i) / (xCount - 1),
-  );
-
   const scX = (x: number) => ((x - minX) / Math.max(maxX - minX, 1)) * IW;
   const scY = (y: number) => IH - (y / maxY) * IH;
-  const path = (key: keyof SimTimePoint) =>
+
+  const line = (key: "ordersInKitchen" | "tablesOccupied") =>
     points
-      .map(
-        (p, i) =>
-          `${i === 0 ? "M" : "L"}${scX(p.elapsedSimSec).toFixed(1)},${scY(p[key] as number).toFixed(1)}`,
-      )
+      .map((p, i) => `${i === 0 ? "M" : "L"}${scX(p.elapsedSimSec).toFixed(1)},${scY(p[key]).toFixed(1)}`)
       .join(" ");
 
-  const series: Array<{ key: keyof SimTimePoint; color: string; label: string }> = [
-    { key: "arrivals", color: C.arrivals, label: "Arrivées" },
-    { key: "ordersPlaced", color: C.orders, label: "Commandes" },
-    { key: "tablesServed", color: C.served, label: "Servis" },
-    { key: "rejected", color: C.rejected, label: "Refusés" },
-  ];
+  const rejLine = points.map((p, i) =>
+    `${i === 0 ? "M" : "L"}${scX(p.elapsedSimSec).toFixed(1)},${scY(p.totalRejected).toFixed(1)}`
+  ).join(" ");
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap gap-4 text-xs">
-        {series.map(({ label, color }) => (
-          <span
-            key={label}
-            className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400"
-          >
-            <span
-              className="inline-block h-0.5 w-5 rounded"
-              style={{ backgroundColor: color }}
-            />
+      <div className="mb-1.5 flex flex-wrap gap-3 text-xs">
+        {[
+          { color: C.orders, label: "Commandes en cours" },
+          { color: C.tables, label: "Tables occupées" },
+          { color: C.rejected, label: "Refus cumulés" },
+        ].map(({ color, label }) => (
+          <span key={label} className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400">
+            <span className="inline-block h-0.5 w-4 rounded" style={{ backgroundColor: color }} />
             {label}
           </span>
         ))}
       </div>
       <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" className="overflow-visible">
         <g transform={`translate(${P.l},${P.t})`}>
-          {ticks.map((y) => (
-            <g key={y}>
-              <line
-                x1={0}
-                y1={scY(y)}
-                x2={IW}
-                y2={scY(y)}
-                className="stroke-zinc-200 dark:stroke-zinc-700"
-                strokeWidth={1}
-              />
-              <text
-                x={-4}
-                y={scY(y) + 4}
-                textAnchor="end"
-                fontSize={10}
-                className="fill-zinc-400 dark:fill-zinc-500"
-              >
-                {y}
-              </text>
-            </g>
-          ))}
-          {xVals.map((x, i) => (
-            <text
-              key={i}
-              x={scX(x)}
-              y={IH + 18}
-              textAnchor="middle"
-              fontSize={10}
-              className="fill-zinc-400 dark:fill-zinc-500"
-            >
-              {formatMin(x)}
-            </text>
-          ))}
-          {series.map(({ key, color }) => (
-            <path
-              key={key}
-              d={path(key)}
-              fill="none"
-              stroke={color}
-              strokeWidth={2}
-              strokeLinejoin="round"
-            />
-          ))}
+          <Axes maxY={maxY} maxX={maxX} minX={minX} yFmt={(v) => String(v)} xFmt={fmtMin} />
+          <path d={line("tablesOccupied")} fill="none" stroke={C.tables} strokeWidth={1.5} strokeLinejoin="round" />
+          <path d={rejLine} fill="none" stroke={C.rejected} strokeWidth={1.5} strokeLinejoin="round" strokeDasharray="4,3" />
+          <path d={line("ordersInKitchen")} fill="none" stroke={C.orders} strokeWidth={2} strokeLinejoin="round" />
         </g>
       </svg>
     </div>
   );
 }
 
-// ── Wait time chart ───────────────────────────────────────────────────────────
+// ── Chart 2: temps d'attente ──────────────────────────────────────────────────
 
-function WaitChart({
-  entries,
-  avgWait,
-}: {
-  entries: WaitEntry[];
-  avgWait: number;
-}) {
+function WaitChart({ entries, avgWait }: { entries: WaitEntry[]; avgWait: number }) {
   if (entries.length < 1) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-400">
+      <p className="flex items-center justify-center h-[90px] text-xs text-zinc-400">
         En attente de tables servies…
       </p>
     );
   }
 
   const xs = entries.map((e) => e.elapsedSimSec);
-  const ys = entries.map((e) => e.waitTimeSec);
   const minX = xs[0];
-  const maxX = Math.max(...xs);
-  const rawMax = Math.max(...ys, avgWait, 60);
+  const maxX = Math.max(...xs, minX + 1);
+  const rawMax = Math.max(...entries.map((e) => e.waitTimeSec), avgWait, 60);
   const maxY = niceMax(rawMax);
-  const ticks = yAxis(maxY);
-  const xCount = 5;
-  const xVals = Array.from(
-    { length: xCount },
-    (_, i) => minX + ((maxX - minX) * i) / (xCount - 1),
-  );
-
   const scX = (x: number) => ((x - minX) / Math.max(maxX - minX, 1)) * IW;
   const scY = (y: number) => IH - (y / maxY) * IH;
 
+  // Moving average (window = 5)
+  const movingAvg = entries.map((_, i) => {
+    const win = entries.slice(Math.max(0, i - 4), i + 1);
+    const avg = win.reduce((s, e) => s + e.waitTimeSec, 0) / win.length;
+    return { x: entries[i].elapsedSimSec, y: avg };
+  });
+  const movingPath = movingAvg
+    .map((p, i) => `${i === 0 ? "M" : "L"}${scX(p.x).toFixed(1)},${scY(p.y).toFixed(1)}`)
+    .join(" ");
+
   return (
     <div>
-      <div className="mb-2 flex flex-wrap gap-4 text-xs">
-        <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: C.waitDot }}
-          />
-          Attente par table
+      <div className="mb-1.5 flex flex-wrap gap-3 text-xs">
+        <span className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: C.above }} />
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: C.below }} />
+          Attente (rouge = au-dessus moy.)
         </span>
-        <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-          <svg width={20} height={10} className="inline">
-            <line
-              x1={0}
-              y1={5}
-              x2={20}
-              y2={5}
-              stroke={C.waitAvg}
-              strokeWidth={1.5}
-              strokeDasharray="4,3"
-            />
-          </svg>
-          Moyenne
+        <span className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400">
+          <span className="inline-block h-0.5 w-4 rounded" style={{ backgroundColor: C.movingAvg }} />
+          Tendance (moy. mobile)
         </span>
       </div>
       <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" className="overflow-visible">
         <g transform={`translate(${P.l},${P.t})`}>
-          {ticks.map((y) => (
-            <g key={y}>
-              <line
-                x1={0}
-                y1={scY(y)}
-                x2={IW}
-                y2={scY(y)}
-                className="stroke-zinc-200 dark:stroke-zinc-700"
-                strokeWidth={1}
-              />
-              <text
-                x={-4}
-                y={scY(y) + 4}
-                textAnchor="end"
-                fontSize={10}
-                className="fill-zinc-400 dark:fill-zinc-500"
-              >
-                {formatSec(y)}
-              </text>
-            </g>
-          ))}
-          {xVals.map((x, i) => (
-            <text
-              key={i}
-              x={scX(x)}
-              y={IH + 18}
-              textAnchor="middle"
-              fontSize={10}
-              className="fill-zinc-400 dark:fill-zinc-500"
-            >
-              {formatMin(x)}
-            </text>
-          ))}
-          {avgWait > 0 && (
+          <Axes maxY={maxY} maxX={maxX} minX={minX} yFmt={fmtSec} xFmt={fmtMin} />
+          {/* Global average (dashed reference) */}
+          {avgWait > 0 && avgWait <= maxY && (
             <line
-              x1={0}
-              y1={scY(avgWait)}
-              x2={IW}
-              y2={scY(avgWait)}
-              stroke={C.waitAvg}
-              strokeWidth={1.5}
-              strokeDasharray="4,3"
+              x1={0} y1={scY(avgWait)} x2={IW} y2={scY(avgWait)}
+              stroke={C.globalAvg} strokeWidth={1} strokeDasharray="3,3"
             />
           )}
+          {/* Moving average line */}
+          {entries.length >= 2 && (
+            <path d={movingPath} fill="none" stroke={C.movingAvg} strokeWidth={2} strokeLinejoin="round" />
+          )}
+          {/* Individual dots */}
           {entries.map((e, i) => (
             <circle
               key={i}
               cx={scX(e.elapsedSimSec)}
               cy={scY(e.waitTimeSec)}
-              r={4}
-              fill={C.waitDot}
-              fillOpacity={0.7}
+              r={3.5}
+              fill={e.waitTimeSec > avgWait ? C.above : C.below}
+              fillOpacity={0.75}
             />
           ))}
         </g>
@@ -281,22 +224,22 @@ export function SimulationCharts({
   avgWaitTimeSec: number;
 }) {
   return (
-    <div className="space-y-8">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-          Flux de clients (cumulatif)
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          Activité en temps réel
         </h3>
-        <p className="mb-2 text-xs text-zinc-500">
-          L&apos;écart entre « Arrivées » et « Servis » révèle le carnet de commandes en attente.
+        <p className="mb-2 text-xs text-zinc-400 dark:text-zinc-500">
+          Quand les commandes en cours s&apos;accumulent, le temps d&apos;attente augmente.
         </p>
-        <FluxChart points={timeSeries} />
+        <ActivityChart points={timeSeries} />
       </div>
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-          Temps d&apos;attente par table servie
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          Temps d&apos;attente par service
         </h3>
-        <p className="mb-2 text-xs text-zinc-500">
-          Une tendance montante indique que la cuisine prend du retard sous la charge.
+        <p className="mb-2 text-xs text-zinc-400 dark:text-zinc-500">
+          Tendance montante = cuisine qui décroche sous la charge.
         </p>
         <WaitChart entries={recentWaitTimes} avgWait={avgWaitTimeSec} />
       </div>

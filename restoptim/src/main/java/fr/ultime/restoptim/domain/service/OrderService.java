@@ -121,6 +121,67 @@ public class OrderService {
     }
 
     /**
+     * Déclare un retard sur une tâche EN_COURS identifiée par son ganttTaskId.
+     * Étend la durée de la tâche de additionalSeconds, puis replanifie toutes les tâches en attente.
+     */
+    @Transactional
+    public void delayTask(String ganttTaskId, int additionalSeconds) {
+        if (additionalSeconds <= 0) {
+            throw new IllegalArgumentException("Le délai supplémentaire doit être positif.");
+        }
+
+        long realNow = System.currentTimeMillis();
+        long offsetMs = timeShiftService.getOffsetMs();
+        long now = ((realNow - offsetMs) / 1000) * 1000;
+
+        for (Order order : orders.getActiveOrders()) {
+            for (ScheduledTask st : order.orderSchedule().scheduledTasks()) {
+                String id = order.id().value() + "_" + st.jobId().value() + "_" + st.taskId().value();
+                if (!id.equals(ganttTaskId)) continue;
+
+                long absStart = order.placedAt() + st.startSecond() * 1000L;
+                long absEnd = order.placedAt() + st.endSecond() * 1000L;
+
+                if (absEnd <= now) {
+                    throw new IllegalStateException("La tâche est déjà terminée.");
+                }
+                if (absStart > now) {
+                    throw new IllegalStateException("La tâche n'a pas encore commencé.");
+                }
+
+                final JobId targetJobId = st.jobId();
+                final TaskId targetTaskId = st.taskId();
+                List<ScheduledTask> updatedTasks = order.orderSchedule().scheduledTasks().stream()
+                        .map(t -> {
+                            if (t.jobId().equals(targetJobId) && t.taskId().equals(targetTaskId)) {
+                                return new ScheduledTask(
+                                        t.jobId(), t.dishId(), t.dishName(),
+                                        t.taskId(), t.taskName(), t.kind(),
+                                        t.startSecond(), t.endSecond() + additionalSeconds,
+                                        t.resources(), t.assignedResourceNames());
+                            }
+                            return t;
+                        })
+                        .toList();
+
+                long newServiceTimeSec = updatedTasks.stream()
+                        .filter(t -> t.kind() == TaskType.PLATING)
+                        .mapToLong(ScheduledTask::endSecond)
+                        .max()
+                        .orElse(order.orderSchedule().serviceTimeSecond());
+
+                orders.updateSchedule(order.id(), new OrderSchedule(order.id(), newServiceTimeSec, updatedTasks));
+                logger.info("[SERVICE] Retard déclaré : tâche={}, +{}s", ganttTaskId, additionalSeconds);
+
+                replanActiveOrders();
+                return;
+            }
+        }
+
+        throw new IllegalArgumentException("Tâche introuvable : " + ganttTaskId);
+    }
+
+    /**
      * Replanifie les tâches en attente de toutes les commandes actives sans ajouter de nouvelle commande.
      * À appeler après la libération d'une table pour libérer les ressources et optimiser les plannings restants.
      */

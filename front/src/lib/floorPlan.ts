@@ -1,7 +1,6 @@
-import type { StepKind, TableStatus } from "./types";
+import type { StepKind, TableStatus, ResourceTypeDto } from "./types";
 
 export const FLOOR_WIDTH = 1000;
-export const FLOOR_HEIGHT = 600;
 
 export const KITCHEN_AREA = {
   x: 60,
@@ -14,16 +13,22 @@ export const TABLE_RADIUS = 38;
 
 export type TablePosition = { x: number; y: number };
 
-export const TABLE_POSITIONS: Record<number, TablePosition> = {
-  1: { x: 180, y: 260 },
-  2: { x: 380, y: 260 },
-  3: { x: 580, y: 260 },
-  4: { x: 800, y: 260 },
-  5: { x: 180, y: 420 },
-  6: { x: 380, y: 420 },
-  7: { x: 580, y: 420 },
-  8: { x: 800, y: 420 },
-};
+const GRID_COLS = 4;
+const GRID_X = [180, 380, 580, 800] as const;
+const GRID_Y_START = 260;
+const GRID_ROW_GAP = 160;
+
+export function getTablePosition(tableNumber: number): TablePosition {
+  const slot = tableNumber - 1;
+  const col = slot % GRID_COLS;
+  const row = Math.floor(slot / GRID_COLS);
+  return { x: GRID_X[col], y: GRID_Y_START + row * GRID_ROW_GAP };
+}
+
+export function computeFloorHeight(maxSlotNumber: number): number {
+  const rows = Math.ceil(maxSlotNumber / GRID_COLS);
+  return Math.max(560, GRID_Y_START + rows * GRID_ROW_GAP + 60);
+}
 
 export type KitchenStation = {
   id: string;
@@ -38,47 +43,29 @@ export type KitchenStation = {
 
 const KITCHEN_INNER_TOP = KITCHEN_AREA.y + 32;
 const KITCHEN_INNER_HEIGHT = KITCHEN_AREA.height - 48;
-const stationWidth = 140;
-const stationGap = 24;
-const stationsStartX =
-  KITCHEN_AREA.x +
-  (KITCHEN_AREA.width - (4 * stationWidth + 3 * stationGap)) / 2;
+const MAX_STATION_WIDTH = 140;
+const STATION_GAP = 24;
 
-function stationBox(slot: number) {
-  return {
-    x: stationsStartX + slot * (stationWidth + stationGap),
+export function buildKitchenStations(resourceTypes: ResourceTypeDto[]): KitchenStation[] {
+  const count = resourceTypes.length;
+  if (count === 0) return [];
+
+  const available = KITCHEN_AREA.width - 40;
+  const totalGap = (count - 1) * STATION_GAP;
+  const width = Math.min(MAX_STATION_WIDTH, Math.max(60, (available - totalGap) / count));
+  const totalWidth = count * width + totalGap;
+  const startX = KITCHEN_AREA.x + (KITCHEN_AREA.width - totalWidth) / 2;
+
+  return resourceTypes.map((rt, i) => ({
+    id: rt.name,
+    label: rt.name.charAt(0).toUpperCase() + rt.name.slice(1),
+    resourceMatch: (n: string) => n.toLowerCase().startsWith(rt.name.toLowerCase()),
+    x: startX + i * (width + STATION_GAP),
     y: KITCHEN_INNER_TOP,
-    width: stationWidth,
+    width,
     height: KITCHEN_INNER_HEIGHT,
-  };
+  }));
 }
-
-export const KITCHEN_STATIONS: KitchenStation[] = [
-  {
-    id: "commis",
-    label: "Commis",
-    resourceMatch: (n) => n.toLowerCase().startsWith("commis"),
-    ...stationBox(0),
-  },
-  {
-    id: "chef",
-    label: "Chef",
-    resourceMatch: (n) => n.toLowerCase().startsWith("chef"),
-    ...stationBox(1),
-  },
-  {
-    id: "plaque",
-    label: "Plaques",
-    resourceMatch: (n) => n.toLowerCase().startsWith("plaque"),
-    ...stationBox(2),
-  },
-  {
-    id: "four",
-    label: "Four",
-    resourceMatch: (n) => n.toLowerCase().startsWith("four"),
-    ...stationBox(3),
-  },
-];
 
 export const TABLE_STATUS_FILL: Record<TableStatus, string> = {
   libre: "#e4e4e7",

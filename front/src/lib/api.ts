@@ -92,6 +92,18 @@ export const api = {
   },
   tables: {
     list: () => request<BackendTable[]>("/api/tables"),
+    create: (seats: number) =>
+      request<BackendTable>("/api/tables", {
+        method: "POST",
+        body: JSON.stringify({ seats }),
+      }),
+    updateSeats: (id: number, seats: number) =>
+      request<BackendTable>(`/api/tables/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ seats }),
+      }),
+    delete: (id: number) =>
+      request<void>(`/api/tables/${id}`, { method: "DELETE" }),
     install: (id: number, partySize: number) =>
       request<BackendTable>(`/api/tables/${id}/install`, {
         method: "POST",

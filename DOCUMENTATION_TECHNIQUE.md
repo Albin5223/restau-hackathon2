@@ -274,7 +274,7 @@ D'après `front/package.json` :
 | TypeScript     | ^5                       |
 | Tailwind CSS   | v4 (`@tailwindcss/postcss`) |
 | ESLint         | ^9 + `eslint-config-next` |
-| Bibliothèques  | `@xyflow/react` 12.3 (éditeur de graphe de recettes) |
+| Bibliothèques  | `@xyflow/react` 12.3 (éditeur de graphe de recettes), `react-markdown` 10 + `remark-gfm` 4 (rendu des réponses du chatbot expérimental) |
 
 `front/AGENTS.md` (et `front/CLAUDE.md` qui y renvoie) précise que cette version de Next.js comporte des breaking changes par rapport aux versions antérieures.
 
@@ -292,6 +292,9 @@ front/
 │   │   ├── ressources/     # /ressources
 │   │   ├── tables/         # /tables (lien commenté dans la sidebar)
 │   │   └── simulation/     # /simulation
+│   ├── app/
+│   │   └── api/
+│   │       └── chat/route.ts        # Route serveur Next.js — proxy Mistral (expérimental)
 │   ├── components/
 │   │   ├── Sidebar.tsx
 │   │   ├── PageHeader.tsx
@@ -301,13 +304,19 @@ front/
 │   │   ├── RecipesProvider.tsx      # Cache + invalidation des plats
 │   │   ├── ResourcesProvider.tsx    # Cache des types de ressources
 │   │   ├── TimeProvider.tsx         # Offset temporel client
-│   │   └── TimeTravelControls.tsx   # Boutons +5 min / +30 s / reset
+│   │   ├── TimeTravelControls.tsx   # Boutons +5 min / +30 s / reset
+│   │   └── ChatBubble.tsx           # Bulle de chat flottante (expérimental)
+│   ├── public/
+│   │   └── sounds/
+│   │       └── dehors.mp3           # Effet sonore lors d'une libération massive de tables
 │   └── lib/
 │       ├── api.ts          # Client HTTP typé
 │       ├── types.ts        # Types alignés sur le backend
 │       ├── floorPlan.ts    # Géométrie du plan de salle
 │       ├── recipes.ts      # Helpers menu (missingResources, …)
-│       └── format.ts       # Formatage durées / horaires
+│       ├── format.ts       # Formatage durées / horaires
+│       ├── sounds.ts       # Helper de lecture audio (releaseAll)
+│       └── chat-tools.ts   # Définitions + exécuteurs des outils du chatbot (expérimental)
 ├── Dockerfile              # dev (next dev)
 ├── Dockerfile.prod
 └── next.config.ts
@@ -340,6 +349,43 @@ front/
 - **`RecipesProvider` / `ResourcesProvider` / `TimeProvider`** — contextes React qui mettent en cache les listes côté client et exposent un `refresh()` pour ré-interroger l'API après une mutation.
 - **`TimeTravelControls`** — boutons calant l'horloge perçue (`POST /api/time/shift`) ; masqués pendant la simulation automatique.
 
+### 3.6 Assistant conversationnel (expérimentation)
+
+> ⚠️ **Statut : expérimentation**, hors livrable hackathon. Désactivé automatiquement si `MISTRAL_API_KEY` est absente ou si l'API Mistral renvoie `401/402/403/429` ; le bouton est alors masqué côté UI.
+
+**Composants** : `ChatBubble.tsx` (bulle flottante + rendu Markdown), `app/api/chat/route.ts` (proxy Mistral, boucle `tool_calls` max 6), `lib/chat-tools.ts` (définition et exécution des outils).
+
+**Modèle** : `mistral-small-latest` (format compatible OpenAI, `tool_choice: "auto"`).
+
+**Outils exposés au LLM** :
+
+| Outil | Type | Backend |
+| --- | --- | --- |
+| `get_tables` / `get_gantt` / `get_dishes` / `get_resources` / `get_simulation_status` | lecture | `GET /api/...` |
+| `place_order` | mutation | `POST /api/orders` |
+| `release_table` | mutation | `POST /api/tables/{id}/release` |
+
+Les mutations héritent du verrou backend `423 LOCKED` pendant la simulation automatique. Les timestamps epoch ms renvoyés par les tools sont enrichis d'un champ `<nom>Formatted` (`HH:mm:ss`) ; le system prompt interdit l'affichage du brut.
+
+**Configuration** — fichier `.env` à la racine (gitignored, injecté via `env_file:` dans `docker-compose.yml`) :
+
+```
+MISTRAL_API_KEY=...
+INTERNAL_API_URL=...
+```
+
+`INTERNAL_API_URL` dépend du mode :
+
+| Mode | Valeur |
+| --- | --- |
+| Docker Compose (front + back) | `http://restoptim:8080` |
+| Front Docker + back local | `http://host.docker.internal:8080` |
+| Tout en local | `http://localhost:8080` |
+
+`GET /api/chat` renvoie `{ available, reason }` — consulté à l'init du composant pour masquer la bulle si indisponible.
+
+**Limites** : pas d'auth ni rate-limiting interne, pas de garde-fou sur les mutations LLM au-delà du system prompt, coût/latence dépendants de Mistral, état de désactivation conservé en mémoire (perdu au redémarrage).
+
 ---
 
 ## 4. Installation
@@ -354,14 +400,25 @@ docker compose up -d --build
 
 `docker-compose.yml` lance deux services :
 
-| Service     | Image                | Port  | Profil Spring | Notes                                                 |
-| ----------- | -------------------- | ----- | ------------- | ----------------------------------------------------- |
-| `front`     | `restoptim-front`    | 3000  | —             | `next dev` ; volumes montés pour hot-reload.          |
-| `restoptim` | `restoptim-backend`  | 8080  | `hom`         | `mvn spring-boot:run` ; volume `./restoptim/data`.    |
+| Service     | Image                | Port  | Profil Spring | Notes                                                                                  |
+| ----------- | -------------------- | ----- | ------------- | -------------------------------------------------------------------------------------- |
+| `front`     | `restoptim-front`    | 3000  | —             | `next dev` ; volumes montés pour hot-reload ; `env_file: .env` (racine projet).        |
+| `restoptim` | `restoptim-backend`  | 8080  | `hom`         | `mvn spring-boot:run` ; volume `./restoptim/data`.                                     |
 
 Plateforme imposée : `linux/amd64`.
 
 UI accessible sur <http://localhost:3000>, API sur <http://localhost:8080>.
+
+**Variables d'environnement** (optionnelles, uniquement pour activer le chatbot expérimental — cf. §3.6) :
+
+Créer un fichier `.env` à la racine du projet (gitignored) :
+
+```
+MISTRAL_API_KEY=...
+INTERNAL_API_URL=http://restoptim:8080
+```
+
+Le redémarrage du conteneur `front` est requis après modification (`docker compose restart front`).
 
 ### 4.2 Sans Docker
 
@@ -464,4 +521,5 @@ Schéma de test équivalent en H2 dans `restoptim/src/test/resources/schema-h2.s
 ### 5.4 Données runtime
 
 - Le champ `schedule` de `commandes` contient le `OrderSchedule` produit par le scheduler (sérialisé par `OrderScheduleJsonMapper`).
-- Aucune source externe n'est interrogée (pas d'appel réseau sortant). Les ressources, plats, tables et commandes sont les seuls référentiels utilisés.
+- Aucune source externe n'est interrogée par le **cœur métier** du backend : les ressources, plats, tables et commandes restent les seuls référentiels utilisés pour l'ordonnancement et la simulation.
+- **Exception** : le chatbot expérimental (§3.6), s'il est configuré, effectue des appels sortants vers l'API Mistral (`https://api.mistral.ai/v1/chat/completions`) depuis la route serveur Next.js `/api/chat`. Ces appels sont initiés uniquement par interaction utilisateur et n'alimentent jamais la base de données.

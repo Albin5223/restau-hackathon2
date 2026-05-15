@@ -10,6 +10,8 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       - NEXT_TELEMETRY_DISABLED=1
       - WATCHPACK_POLLING=true

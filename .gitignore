@@ -5,3 +5,8 @@
 # Project
 restoptim/.mvn/*
 restoptim/data/*
+
+# Secrets
+.env
+.env.*
+!.env.example

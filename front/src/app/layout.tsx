@@ -6,6 +6,7 @@ import { RecipesProvider } from "@/components/RecipesProvider";
 import { ResourcesProvider } from "@/components/ResourcesProvider";
 import { TimeProvider } from "@/components/TimeProvider";
 import { TimeTravelControls } from "@/components/TimeTravelControls";
+import { ChatBubble } from "@/components/ChatBubble";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,6 +43,7 @@ export default function RootLayout({
                 <main className="flex-1 overflow-x-hidden">{children}</main>
               </div>
               <TimeTravelControls />
+              <ChatBubble />
             </TimeProvider>
           </RecipesProvider>
         </ResourcesProvider>

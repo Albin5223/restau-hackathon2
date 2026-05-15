@@ -12,9 +12,40 @@ export type AutoSimLog = {
   message: string;
 };
 
+export type WaitEntry = {
+  tableNumber: number;
+  partySize: number;
+  waitTimeSec: number;
+  elapsedSimSec: number;
+};
+
+export type SimTimePoint = {
+  elapsedSimSec: number;
+  ordersInKitchen: number;
+  tablesOccupied: number;
+  totalArrivals: number;
+  totalRejected: number;
+  avgWaitSec: number;
+};
+
+export type SimulationStats = {
+  totalArrivals: number;
+  totalRejected: number;
+  totalOrdersPlaced: number;
+  totalTablesServed: number;
+  totalClientsServed: number;
+  avgWaitTimeSec: number;
+  rejectionRate: number;
+  rejectionReasons: Record<string, number>;
+  resourceUsageSeconds: Record<string, number>;
+  recentWaitTimes: WaitEntry[];
+  timeSeries: SimTimePoint[];
+};
+
 export type AutoSimStatus = {
   active: boolean;
   logs: AutoSimLog[];
+  stats: SimulationStats;
 };
 
 export type TimeStatus = {

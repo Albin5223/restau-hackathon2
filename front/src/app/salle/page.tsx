@@ -43,7 +43,7 @@ const STATUSES_REQUIRING_CONFIRMATION: TableStatus[] = [
 ];
 
 export default function SallePage() {
-  const { shiftVersion } = useTime();
+  const { shiftVersion, autoSimActive } = useTime();
   const [tables, setTables] = useState<BackendTable[]>([]);
   const [ganttTasks, setGanttTasks] = useState<BackendGanttTask[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -125,7 +125,7 @@ export default function SallePage() {
                 })}
               </span>
             ) : null}
-            {tables.some((t) => t.status !== "libre") ? (
+            {tables.some((t) => t.status !== "libre" && !autoSimActive) ? (
               confirmingReleaseAll ? (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-amber-700 dark:text-amber-300">
@@ -178,6 +178,7 @@ export default function SallePage() {
               table={selected}
               tasks={selectedTasks}
               now={now}
+              autoSimActive={autoSimActive}
               onClear={() => clearTable(selected.id)}
             />
           ) : (
@@ -221,11 +222,13 @@ function SelectedTablePanel({
   table,
   tasks,
   now,
+  autoSimActive,
   onClear,
 }: {
   table: BackendTable;
   tasks: BackendGanttTask[];
   now: number;
+  autoSimActive: boolean;
   onClear: () => void;
 }) {
   const [confirmingClear, setConfirmingClear] = useState(false);
@@ -278,7 +281,7 @@ function SelectedTablePanel({
         </span>
       </header>
 
-      {table.status !== "libre" ? (
+      {table.status !== "libre" && !autoSimActive ? (
         confirmingClear ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
             <p className="mb-3 text-xs text-amber-800 dark:text-amber-300">

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
+import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
 import type { BackendTable, TableStatus } from "@/lib/types";
 
@@ -20,6 +21,7 @@ const statusBadge: Record<TableStatus, string> = {
 };
 
 export default function TablesPage() {
+  const { autoSimActive } = useTime();
   const [tables, setTables] = useState<BackendTable[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -106,6 +108,7 @@ export default function TablesPage() {
           {selected ? (
             <TableDetail
               table={selected}
+              autoSimActive={autoSimActive}
               onSeat={(n) => seatGuests(selected.id, n)}
               onClear={() => clearTable(selected.id)}
               onServe={() => serveTable(selected.id)}
@@ -128,11 +131,13 @@ const STATUSES_REQUIRING_CONFIRMATION: TableStatus[] = [
 
 function TableDetail({
   table,
+  autoSimActive,
   onSeat,
   onClear,
   onServe,
 }: {
   table: BackendTable;
+  autoSimActive: boolean;
   onSeat: (partySize: number) => void;
   onClear: () => void;
   onServe: () => void;
@@ -220,7 +225,7 @@ function TableDetail({
           </button>
         ) : null}
 
-        {table.status !== "libre" ? (
+        {table.status !== "libre" && !autoSimActive ? (
           confirmingClear ? (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
               <p className="mb-3 text-xs text-amber-800 dark:text-amber-300">

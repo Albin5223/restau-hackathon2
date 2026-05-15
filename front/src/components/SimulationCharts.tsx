@@ -60,8 +60,8 @@ function Axes({
   const scX = (x: number) => ((x - minX) / Math.max(maxX - minX, 1)) * IW;
   return (
     <>
-      {ticks.map((y) => (
-        <g key={y}>
+      {ticks.map((y, idx) => (
+        <g key={`y-${idx}`}>
           <line
             x1={0} y1={scY(y)} x2={IW} y2={scY(y)}
             className="stroke-zinc-200 dark:stroke-zinc-700" strokeWidth={1}
@@ -101,17 +101,21 @@ function ActivityChart({ points }: { points: SimTimePoint[] }) {
     1,
   );
   const maxY = niceMax(rawMax);
+  const maxRej = niceMax(Math.max(...points.map((p) => p.totalRejected), 1));
   const scX = (x: number) => ((x - minX) / Math.max(maxX - minX, 1)) * IW;
   const scY = (y: number) => IH - (y / maxY) * IH;
+  const scRej = (y: number) => IH - (y / maxRej) * IH;
 
   const line = (key: "ordersInKitchen" | "tablesOccupied") =>
     points
       .map((p, i) => `${i === 0 ? "M" : "L"}${scX(p.elapsedSimSec).toFixed(1)},${scY(p[key]).toFixed(1)}`)
       .join(" ");
 
-  const rejLine = points.map((p, i) =>
-    `${i === 0 ? "M" : "L"}${scX(p.elapsedSimSec).toFixed(1)},${scY(p.totalRejected).toFixed(1)}`
-  ).join(" ");
+  const rejLine = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${scX(p.elapsedSimSec).toFixed(1)},${scRej(p.totalRejected).toFixed(1)}`)
+    .join(" ");
+
+  const rejTicks = yTicks(maxRej);
 
   return (
     <div>
@@ -119,7 +123,7 @@ function ActivityChart({ points }: { points: SimTimePoint[] }) {
         {[
           { color: C.orders, label: "Commandes en cours" },
           { color: C.tables, label: "Tables occupées" },
-          { color: C.rejected, label: "Refus cumulés" },
+          { color: C.rejected, label: "Refus cumulés (axe →)" },
         ].map(({ color, label }) => (
           <span key={label} className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400">
             <span className="inline-block h-0.5 w-4 rounded" style={{ backgroundColor: color }} />
@@ -130,6 +134,13 @@ function ActivityChart({ points }: { points: SimTimePoint[] }) {
       <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" className="overflow-visible">
         <g transform={`translate(${P.l},${P.t})`}>
           <Axes maxY={maxY} maxX={maxX} minX={minX} yFmt={(v) => String(v)} xFmt={fmtMin} />
+          {/* Right Y-axis ticks for rejections */}
+          {rejTicks.map((v, idx) => (
+            <text key={`rj-${idx}`} x={IW + 3} y={scRej(v) + 4} textAnchor="start" fontSize={9}
+              fill={C.rejected} opacity={0.7}>
+              {v}
+            </text>
+          ))}
           <path d={line("tablesOccupied")} fill="none" stroke={C.tables} strokeWidth={1.5} strokeLinejoin="round" />
           <path d={rejLine} fill="none" stroke={C.rejected} strokeWidth={1.5} strokeLinejoin="round" strokeDasharray="4,3" />
           <path d={line("ordersInKitchen")} fill="none" stroke={C.orders} strokeWidth={2} strokeLinejoin="round" />

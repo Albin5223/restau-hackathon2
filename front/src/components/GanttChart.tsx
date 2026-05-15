@@ -53,9 +53,10 @@ function linkColor(baseId: string): string {
 
 type Props = {
   steps: ScheduledStep[];
+  onDelayTask?: (ganttTaskId: string, additionalSeconds: number) => Promise<void>;
 };
 
-export function GanttChart({ steps }: Props) {
+export function GanttChart({ steps, onDelayTask }: Props) {
   const [filter, setFilter] = useState<string>("toutes");
   const [now, setNow] = useState(Date.now());
   const [hoveredOrderId, setHoveredOrderId] = useState<string | null>(null);
@@ -349,6 +350,7 @@ export function GanttChart({ steps }: Props) {
           orderId={selectedOrderId}
           steps={steps.filter((s) => s.orderId === selectedOrderId)}
           onClose={() => setSelectedOrderId(null)}
+          onDelayTask={onDelayTask}
         />
       ) : null}
     </div>
@@ -359,11 +361,34 @@ function CommandeDetailPanel({
   orderId,
   steps,
   onClose,
+  onDelayTask,
 }: {
   orderId: string;
   steps: ScheduledStep[];
   onClose: () => void;
+  onDelayTask?: (ganttTaskId: string, additionalSeconds: number) => Promise<void>;
 }) {
+  const [delayingStepId, setDelayingStepId] = useState<string | null>(null);
+  const [delayMinutes, setDelayMinutes] = useState("5");
+  const [isDelaying, setIsDelaying] = useState(false);
+  const [delayError, setDelayError] = useState<string | null>(null);
+
+  async function handleConfirmDelay(stepId: string) {
+    if (!onDelayTask) return;
+    const minutes = parseInt(delayMinutes, 10);
+    if (isNaN(minutes) || minutes <= 0) return;
+    setIsDelaying(true);
+    setDelayError(null);
+    try {
+      await onDelayTask(stepId, minutes * 60);
+      setDelayingStepId(null);
+    } catch {
+      setDelayError("Erreur lors de la déclaration du retard.");
+    } finally {
+      setIsDelaying(false);
+    }
+  }
+
   if (steps.length === 0) return null;
 
   const sorted = [...steps].sort((a, b) => a.startAt - b.startAt);
@@ -428,27 +453,63 @@ function CommandeDetailPanel({
               {dish}
             </h4>
             <ol className="mt-2 space-y-1.5">
-              {dishSteps.map((s) => (
-                <li
-                  key={s.id}
-                  className="flex items-center gap-2 text-xs"
-                >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-sm ${kindDotColor(s.kind)}`}
-                  />
-                  <span className="flex-1 truncate text-zinc-700 dark:text-zinc-300">
-                    {s.stepName}
-                  </span>
-                  <span className="font-mono tabular-nums text-zinc-500">
-                    {formatTime(s.startAt)}
-                  </span>
-                  <span
-                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${statusBadge(s.status)}`}
-                  >
-                    {statusLabel(s.status)}
-                  </span>
-                </li>
-              ))}
+              {dishSteps.map((s) => {
+                const isPrimary = s.id === getBaseStepId(s.id);
+                const isBeingDelayed = delayingStepId === s.id;
+                return (
+                  <li key={s.id} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className={`h-2 w-2 shrink-0 rounded-sm ${kindDotColor(s.kind)}`} />
+                    <span className="flex-1 truncate text-zinc-700 dark:text-zinc-300">
+                      {s.stepName}
+                    </span>
+                    <span className="font-mono tabular-nums text-zinc-500">
+                      {formatTime(s.startAt)}
+                    </span>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${statusBadge(s.status)}`}>
+                      {statusLabel(s.status)}
+                    </span>
+                    {s.status === "en_cours" && isPrimary && onDelayTask && (
+                      isBeingDelayed ? (
+                        <div className="flex w-full items-center gap-1 pl-4">
+                          <input
+                            type="number"
+                            min="1"
+                            max="120"
+                            value={delayMinutes}
+                            onChange={(e) => setDelayMinutes(e.target.value)}
+                            className="w-14 rounded border border-zinc-300 px-1 py-0.5 text-xs tabular-nums dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                          />
+                          <span className="text-zinc-500">min</span>
+                          <button
+                            onClick={() => handleConfirmDelay(s.id)}
+                            disabled={isDelaying}
+                            className="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+                          >
+                            {isDelaying ? "…" : "✓"}
+                          </button>
+                          <button
+                            onClick={() => { setDelayingStepId(null); setDelayError(null); }}
+                            className="rounded px-1 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                          >
+                            ✕
+                          </button>
+                          {delayError && (
+                            <span className="text-[10px] text-red-500">{delayError}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setDelayingStepId(s.id); setDelayMinutes("5"); setDelayError(null); }}
+                          title="Déclarer un retard"
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                        >
+                          ⏱ retard
+                        </button>
+                      )
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           </section>
         ))}

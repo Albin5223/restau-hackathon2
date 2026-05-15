@@ -52,9 +52,10 @@ function toScheduledSteps(task: BackendGanttTask): ScheduledStep[] {
 }
 
 export default function CuisinePage() {
-  const { shiftVersion } = useTime();
+  const { shiftVersion, offsetMs } = useTime();
   const [steps, setSteps] = useState<ScheduledStep[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -76,8 +77,13 @@ export default function CuisinePage() {
       mounted = false;
       clearInterval(id);
     };
-    // shiftVersion → relance immédiate du fetch après un voyage temporel
-  }, [shiftVersion]);
+    // shiftVersion / refreshToken → relance immédiate du fetch
+  }, [shiftVersion, refreshToken]);
+
+  async function handleDelayTask(ganttTaskId: string, additionalSeconds: number) {
+    await api.cuisine.delayTask(ganttTaskId, additionalSeconds);
+    setRefreshToken((t) => t + 1);
+  }
 
   const upcomingAlerts = steps
     .filter((s) => s.status !== "termine")
@@ -99,7 +105,7 @@ export default function CuisinePage() {
       />
 
       <div className="space-y-6 p-8">
-        <GanttChart steps={steps} />
+        <GanttChart steps={steps} onDelayTask={offsetMs === 0 ? handleDelayTask : undefined} />
 
         {upcomingAlerts.length > 0 && (
           <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">

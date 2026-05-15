@@ -123,6 +123,11 @@ export const api = {
   },
   cuisine: {
     gantt: () => request<BackendGanttResponse>("/api/cuisine/gantt"),
+    delayTask: (ganttTaskId: string, additionalSeconds: number) =>
+      request<void>("/api/cuisine/gantt/delay", {
+        method: "POST",
+        body: JSON.stringify({ ganttTaskId, additionalSeconds }),
+      }),
   },
   resources: {
     list: () => request<ResourceTypeDto[]>("/api/resources"),

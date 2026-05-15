@@ -16,6 +16,8 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import fr.ultime.restoptim.domain.model.dish.Dish;
 import fr.ultime.restoptim.domain.model.dish.DishId;
@@ -31,6 +33,7 @@ import org.springframework.stereotype.Service;
 import fr.ultime.restoptim.domain.model.AutoSimulationLog;
 import fr.ultime.restoptim.domain.model.AutoSimulationStatus;
 import fr.ultime.restoptim.domain.model.GanttTask;
+import fr.ultime.restoptim.domain.model.SimulationStats;
 import fr.ultime.restoptim.domain.spi.Dishes;
 import fr.ultime.restoptim.domain.spi.Tables;
 
@@ -53,6 +56,18 @@ public class AutoSimulationService {
     private final Random random = new Random();
     private final Set<OrderId> servedOrderIds = ConcurrentHashMap.newKeySet();
 
+    // Stats counters
+    private final AtomicInteger totalArrivals = new AtomicInteger(0);
+    private final AtomicInteger totalRejected = new AtomicInteger(0);
+    private final AtomicInteger totalOrdersPlaced = new AtomicInteger(0);
+    private final AtomicInteger totalTablesServed = new AtomicInteger(0);
+    private final AtomicInteger totalClientsServed = new AtomicInteger(0);
+    private final AtomicLong totalWaitTimeMs = new AtomicLong(0);
+    private final AtomicInteger waitCount = new AtomicInteger(0);
+    private final ConcurrentHashMap<TableId, Long> arrivalTimeByTable = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicInteger> rejectionReasonCounts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicLong> resourceUsageSec = new ConcurrentHashMap<>();
+
     public AutoSimulationService(Tables tables, Dishes dishes, Orders orders,
                                  OrderService orderService, TimeShiftService timeShiftService) {
         this.tables = tables;
@@ -68,8 +83,23 @@ public class AutoSimulationService {
 
     public AutoSimulationStatus getStatus() {
         synchronized (logs) {
-            return new AutoSimulationStatus(active.get(), new ArrayList<>(logs));
+            return new AutoSimulationStatus(active.get(), new ArrayList<>(logs), getStats());
         }
+    }
+
+    public SimulationStats getStats() {
+        int arrivals = totalArrivals.get();
+        int rejected = totalRejected.get();
+        int wc = waitCount.get();
+        double avgWait = wc > 0 ? totalWaitTimeMs.get() / 1000.0 / wc : 0.0;
+        double rejRate = arrivals > 0 ? rejected * 100.0 / arrivals : 0.0;
+        Map<String, Integer> reasons = new HashMap<>();
+        rejectionReasonCounts.forEach((k, v) -> reasons.put(k, v.get()));
+        Map<String, Long> usage = new HashMap<>();
+        resourceUsageSec.forEach((k, v) -> usage.put(k, v.get()));
+        return new SimulationStats(arrivals, rejected, totalOrdersPlaced.get(),
+                totalTablesServed.get(), totalClientsServed.get(),
+                avgWait, rejRate, reasons, usage);
     }
 
     public synchronized void start(int durationMin, double arrivalRatePerHour, int avgPartySize, double speedMultiplier) {
@@ -80,6 +110,17 @@ public class AutoSimulationService {
             logs.clear();
         }
         servedOrderIds.clear();
+        totalArrivals.set(0);
+        totalRejected.set(0);
+        totalOrdersPlaced.set(0);
+        totalTablesServed.set(0);
+        totalClientsServed.set(0);
+        totalWaitTimeMs.set(0);
+        waitCount.set(0);
+        arrivalTimeByTable.clear();
+        rejectionReasonCounts.clear();
+        resourceUsageSec.clear();
+
         // L'auto-sim travaille en temps réel : on annule tout décalage manuel
         // pour éviter un mélange incohérent des deux mécanismes.
         timeShiftService.reset();
@@ -127,7 +168,11 @@ public class AutoSimulationService {
 
         try {
             releaseAllTables();
-            addLog("info", "Simulation arrêtée — toutes les tables ont été libérées.");
+            SimulationStats stats = getStats();
+            addLog("info", String.format(
+                    "Simulation arrêtée — %d arrivées, %d refus (%.1f%%), %d tables servies, attente moy. %.0fs",
+                    stats.totalArrivals(), stats.totalRejected(), stats.rejectionRate(),
+                    stats.totalTablesServed(), stats.avgWaitTimeSec()));
         } catch (Exception e) {
             logger.error("[AUTO-SIM] Erreur lors de la libération des tables", e);
             addLog("error", "Erreur lors de l'arrêt : " + e.getMessage());
@@ -161,6 +206,7 @@ public class AutoSimulationService {
         // Taille du groupe : uniforme entre 1 et min(avgPartySize*2, 8)
         int maxSize = Math.min(avgPartySize * 2, 8);
         int partySize = 1 + random.nextInt(maxSize);
+        totalArrivals.incrementAndGet();
 
         // Chercher la plus petite table libre de taille suffisante
         Optional<Table> tableOpt = tables.getTables().stream()
@@ -169,6 +215,9 @@ public class AutoSimulationService {
 
         if (tableOpt.isEmpty()) {
             addLog("rejected", partySize + " client(s) refusé(s) — aucune table libre disponible");
+            totalRejected.incrementAndGet();
+            rejectionReasonCounts.computeIfAbsent("Aucune table disponible", k -> new AtomicInteger(0))
+                    .incrementAndGet();
             return;
         }
 
@@ -179,6 +228,7 @@ public class AutoSimulationService {
         try {
             tables.save(new Table(table.id(), table.number(), table.seats(),
                     TableStatus.COMMANDE_PASSEE, partySize, null));
+            arrivalTimeByTable.put(table.id(), System.currentTimeMillis());
         } catch (Exception e) {
             addLog("error", "Impossible d'installer la table " + table.number() + " : " + e.getMessage());
             return;
@@ -188,6 +238,7 @@ public class AutoSimulationService {
         List<Dish> menu = dishes.getDishes();
         if (menu.isEmpty()) {
             addLog("error", "Aucun plat disponible dans le menu.");
+            arrivalTimeByTable.remove(table.id());
             tables.save(new Table(table.id(), table.number(), table.seats(), TableStatus.LIBRE, null, null));
             return;
         }
@@ -205,8 +256,10 @@ public class AutoSimulationService {
         // Passer la commande via le service métier
         try {
             orderService.placeOrder(table.id(), dishIds, speedMultiplier);
+            totalOrdersPlaced.incrementAndGet();
         } catch (Exception e) {
             addLog("error", "Erreur commande Table " + table.number() + " : " + e.getMessage());
+            arrivalTimeByTable.remove(table.id());
             tables.save(new Table(table.id(), table.number(), table.seats(), TableStatus.LIBRE, null, null));
         }
     }
@@ -233,12 +286,24 @@ public class AutoSimulationService {
                 boolean allDone = entry.getValue().stream().allMatch(t -> t.endAt() <= now);
                 if (allDone) {
                     servedOrderIds.add(commandeId);
+                    accumulateResourceUsage(ganttTasks, commandeId);
                     serveTableForCommande(commandeId);
                 }
             }
         } catch (Exception e) {
             logger.error("[AUTO-SIM] Erreur monitoring serving", e);
         }
+    }
+
+    private void accumulateResourceUsage(List<GanttTask> ganttTasks, OrderId commandeId) {
+        double speed = currentSpeedMultiplier > 0 ? currentSpeedMultiplier : 1.0;
+        ganttTasks.stream()
+                .filter(t -> commandeId.equals(t.orderId()))
+                .forEach(t -> {
+                    long simSec = (long) Math.ceil((t.endAt() - t.startAt()) / 1000.0 / speed);
+                    t.resourceNames().forEach(r ->
+                            resourceUsageSec.computeIfAbsent(r, k -> new AtomicLong(0)).addAndGet(simSec));
+                });
     }
 
     private void serveTableForCommande(OrderId orderId) {
@@ -249,6 +314,24 @@ public class AutoSimulationService {
                     try {
                         // Ne pas servir si la simulation s'est arrêtée entre-temps
                         if (!active.get()) return;
+
+                        long now = System.currentTimeMillis();
+                        Long arrivalTime = arrivalTimeByTable.remove(table.id());
+                        if (arrivalTime != null) {
+							// Log le temps d'attente pour cette commande
+							addLog("served", String.format("Table %d servie — temps d'attente : %.1f min",
+									table.number(), (now - arrivalTime) / 60000.0));
+							addLog("served", String.format("Table %d servie — temps d'attente simulé : %.1f min",
+									table.number(), (now - arrivalTime) / 60000.0 * currentSpeedMultiplier));
+                            double speed = currentSpeedMultiplier > 0 ? currentSpeedMultiplier : 1.0;
+                            totalWaitTimeMs.addAndGet((long) ((now - arrivalTime) / speed));
+                            waitCount.incrementAndGet();
+                        }
+                        if (table.partySize() != null) {
+                            totalClientsServed.addAndGet(table.partySize());
+                        }
+                        totalTablesServed.incrementAndGet();
+
                         tables.save(new Table(table.id(), table.number(), table.seats(),
                                 TableStatus.SERVIE, table.partySize(), table.orderId()));
                         addLog("served", "Table " + table.number() + " servie — les clients mangent");

@@ -12,9 +12,22 @@ export type AutoSimLog = {
   message: string;
 };
 
+export type SimulationStats = {
+  totalArrivals: number;
+  totalRejected: number;
+  totalOrdersPlaced: number;
+  totalTablesServed: number;
+  totalClientsServed: number;
+  avgWaitTimeSec: number;
+  rejectionRate: number;
+  rejectionReasons: Record<string, number>;
+  resourceUsageSeconds: Record<string, number>;
+};
+
 export type AutoSimStatus = {
   active: boolean;
   logs: AutoSimLog[];
+  stats: SimulationStats;
 };
 
 export type TimeStatus = {

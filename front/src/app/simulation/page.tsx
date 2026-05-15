@@ -9,7 +9,6 @@ import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
 import type { AutoSimLog, AutoSimStatus } from "@/lib/api";
 import { missingResources } from "@/lib/recipes";
-import { playSound } from "@/lib/sounds";
 import type {
   BackendCommandeResult,
   BackendGanttTask,
@@ -568,7 +567,6 @@ function ManualSimulation({ blocked }: { blocked: boolean }) {
     setResult(null);
     try {
       const res = await api.orders.place(selectedTableId, dishIds, speedMultiplier);
-      playSound("placeOrder");
       setResult(res);
       setTables(await api.tables.list());
     } catch (e) {

@@ -1,7 +1,5 @@
 const SOUNDS = {
-  releaseTable: "/sounds/liberer-table.mp3",
   releaseAll: "/sounds/dehors.mp3",
-  placeOrder: "/sounds/fahh.mp3",
 } as const;
 
 export type SoundName = keyof typeof SOUNDS;

@@ -115,7 +115,6 @@ export default function SallePage() {
 
   const clearTable = useCallback(
     async (tableId: number) => {
-      playSound("releaseTable");
       await api.tables.release(tableId);
       await load();
     },

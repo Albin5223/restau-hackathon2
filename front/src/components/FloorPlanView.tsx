@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import type { BackendGanttTask, BackendTable } from "@/lib/types";
+import type { BackendGanttTask, BackendTable, ResourceTypeDto } from "@/lib/types";
 import {
-  FLOOR_HEIGHT,
+  buildKitchenStations,
+  computeFloorHeight,
   FLOOR_WIDTH,
+  getTablePosition,
   KITCHEN_AREA,
-  KITCHEN_STATIONS,
   STEP_KIND_FILL,
-  TABLE_POSITIONS,
   TABLE_RADIUS,
   TABLE_STATUS_FILL,
   TABLE_STATUS_STROKE,
@@ -18,9 +18,12 @@ import {
 type Props = {
   tables: BackendTable[];
   ganttTasks: BackendGanttTask[];
+  resourceTypes: ResourceTypeDto[];
   now: number;
   selectedTableId: number | null;
   onSelectTable?: (id: number) => void;
+  onAddTable?: () => void;
+  isAddingTable?: boolean;
 };
 
 type ActiveStation = {
@@ -31,16 +34,33 @@ type ActiveStation = {
 export function FloorPlanView({
   tables,
   ganttTasks,
+  resourceTypes,
   now,
   selectedTableId,
   onSelectTable,
+  onAddTable,
+  isAddingTable,
 }: Props) {
+  const { firstEmptyNumber, floorHeight } = useMemo(() => {
+    const occupied = new Set(tables.map((t) => t.number));
+    let first = 1;
+    while (occupied.has(first)) first++;
+    const maxNumber = tables.length > 0 ? Math.max(...tables.map((t) => t.number)) : 0;
+    const highestSlot = Math.max(maxNumber, first);
+    return { firstEmptyNumber: first, floorHeight: computeFloorHeight(highestSlot) };
+  }, [tables]);
+  const addBtnPos = getTablePosition(firstEmptyNumber);
+  const kitchenStations = useMemo(
+    () => buildKitchenStations(resourceTypes),
+    [resourceTypes],
+  );
+
   const activeStationByStation = useMemo<Map<string, ActiveStation>>(() => {
     const m = new Map<string, ActiveStation>();
     for (const task of ganttTasks) {
       if (task.startAt > now || task.endAt < now) continue;
       for (const resourceName of task.resourceNames) {
-        for (const station of KITCHEN_STATIONS) {
+        for (const station of kitchenStations) {
           if (station.resourceMatch(resourceName) && !m.has(station.id)) {
             m.set(station.id, { station, task });
           }
@@ -48,7 +68,7 @@ export function FloorPlanView({
       }
     }
     return m;
-  }, [ganttTasks, now]);
+  }, [ganttTasks, now, kitchenStations]);
 
   const commandeWindowByTable = useMemo(() => {
     const m = new Map<number, { startAt: number; endAt: number }>();
@@ -68,7 +88,7 @@ export function FloorPlanView({
 
   return (
     <svg
-      viewBox={`0 0 ${FLOOR_WIDTH} ${FLOOR_HEIGHT}`}
+      viewBox={`0 0 ${FLOOR_WIDTH} ${floorHeight}`}
       className="h-auto w-full select-none"
       role="img"
       aria-label="Plan de la salle"
@@ -77,7 +97,7 @@ export function FloorPlanView({
         x={0}
         y={0}
         width={FLOOR_WIDTH}
-        height={FLOOR_HEIGHT}
+        height={floorHeight}
         rx={20}
         className="fill-zinc-50 stroke-zinc-200 dark:fill-zinc-900 dark:stroke-zinc-800"
         strokeWidth={2}
@@ -103,7 +123,18 @@ export function FloorPlanView({
         CUISINE
       </text>
 
-      {KITCHEN_STATIONS.map((station) => {
+      {kitchenStations.length === 0 && (
+        <text
+          x={KITCHEN_AREA.x + KITCHEN_AREA.width / 2}
+          y={KITCHEN_AREA.y + KITCHEN_AREA.height / 2 + 4}
+          textAnchor="middle"
+          fontSize={13}
+          className="fill-zinc-400 dark:fill-zinc-600"
+        >
+          Aucune ressource — configurez-en depuis la page Ressources
+        </text>
+      )}
+      {kitchenStations.map((station) => {
         const active = activeStationByStation.get(station.id);
         const fill = active ? STEP_KIND_FILL[active.task.kind] : "#e4e4e7";
         const stroke = active ? "#18181b" : "#a1a1aa";
@@ -161,8 +192,7 @@ export function FloorPlanView({
       })}
 
       {tables.map((table) => {
-        const pos = TABLE_POSITIONS[table.number];
-        if (!pos) return null;
+        const pos = getTablePosition(table.number);
         const isSelected = table.id === selectedTableId;
         const fill = TABLE_STATUS_FILL[table.status];
         const stroke = isSelected ? "#18181b" : TABLE_STATUS_STROKE[table.status];
@@ -259,6 +289,34 @@ export function FloorPlanView({
           </g>
         );
       })}
+
+      {onAddTable && (
+        <g
+          onClick={onAddTable}
+          style={{ cursor: "pointer" }}
+          aria-label="Ajouter une table"
+        >
+          <circle
+            cx={addBtnPos.x}
+            cy={addBtnPos.y}
+            r={TABLE_RADIUS}
+            fill={isAddingTable ? "#18181b" : "#f4f4f5"}
+            stroke={isAddingTable ? "#18181b" : "#a1a1aa"}
+            strokeWidth={isAddingTable ? 3 : 2}
+            strokeDasharray="6 4"
+          />
+          <text
+            x={addBtnPos.x}
+            y={addBtnPos.y + 7}
+            textAnchor="middle"
+            fontSize={28}
+            fontWeight={300}
+            fill={isAddingTable ? "#ffffff" : "#71717a"}
+          >
+            +
+          </text>
+        </g>
+      )}
 
       <style>{`
         @keyframes stationPulse {

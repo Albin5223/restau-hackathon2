@@ -8,7 +8,10 @@ import fr.ultime.restoptim.domain.model.table.TableId;
 import fr.ultime.restoptim.domain.spi.Orders;
 import fr.ultime.restoptim.domain.service.AutoSimulationService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -90,6 +93,49 @@ public class TableController {
         return tableMapper.toDto(updated);
     }
 
+    @PostMapping
+    public ResponseEntity<TableDto> createTable(@RequestBody CreateTableRequest body) {
+        checkNotInAutoSim();
+        if (body.seats() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le nombre de places doit être supérieur à 0.");
+        }
+        Table table = tables.createTable(body.seats());
+        return ResponseEntity.status(HttpStatus.CREATED).body(tableMapper.toDto(table));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteTable(@PathVariable long id) {
+        checkNotInAutoSim();
+        Table table = tables.getTableById(TableId.from(id))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
+        if (table.status() != TableStatus.LIBRE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La table doit être libre pour être supprimée.");
+        }
+        tables.deleteTable(TableId.from(id));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}")
+    public TableDto updateSeats(@PathVariable long id, @RequestBody UpdateSeatsRequest body) {
+        checkNotInAutoSim();
+        Table table = tables.getTableById(TableId.from(id))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Table introuvable : " + id));
+        if (table.status() != TableStatus.LIBRE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La table doit être libre pour être modifiée.");
+        }
+        if (body.seats() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le nombre de places doit être supérieur à 0.");
+        }
+        tables.updateSeats(TableId.from(id), body.seats());
+        return tableMapper.toDto(new Table(table.id(), table.number(), body.seats(), table.status(), null, null));
+    }
+
     public record InstallRequest(int partySize) {
+    }
+
+    public record CreateTableRequest(int seats) {
+    }
+
+    public record UpdateSeatsRequest(int seats) {
     }
 }

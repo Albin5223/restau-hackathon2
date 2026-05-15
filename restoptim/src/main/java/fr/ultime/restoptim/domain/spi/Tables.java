@@ -13,4 +13,10 @@ public interface Tables {
     Optional<Table> getTableById(TableId id);
 
     void save(Table table);
+
+    Table createTable(int seats);
+
+    void deleteTable(TableId id);
+
+    void updateSeats(TableId id, int seats);
 }

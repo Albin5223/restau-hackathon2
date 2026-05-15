@@ -51,27 +51,41 @@ function linkColor(baseId: string): string {
   return LINK_COLORS[h % LINK_COLORS.length];
 }
 
+const ZOOM_LEVELS = [1, 1.5, 2, 3, 4, 6, 8];
+
 type Props = {
   steps: ScheduledStep[];
+  onDelayTask?: (ganttTaskId: string, additionalSeconds: number) => Promise<void>;
 };
 
-export function GanttChart({ steps }: Props) {
+export function GanttChart({ steps, onDelayTask }: Props) {
   const [filter, setFilter] = useState<string>("toutes");
   const [now, setNow] = useState(Date.now());
   const [hoveredOrderId, setHoveredOrderId] = useState<string | null>(null);
   const [hoveredBaseStepId, setHoveredBaseStepId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [pendingDelayStepId, setPendingDelayStepId] = useState<string | null>(null);
 
-  const [chartAreaEl, setChartAreaEl] = useState<HTMLDivElement | null>(null);
-  const [chartWidth, setChartWidth] = useState(0);
+  // Scroll container ref — measures viewport width (fixed regardless of zoom)
+  const [scrollContainerEl, setScrollContainerEl] = useState<HTMLDivElement | null>(null);
+  const [containerChartWidth, setContainerChartWidth] = useState(0);
+
+  const [zoomIndex, setZoomIndex] = useState(0);
+  const zoom = ZOOM_LEVELS[zoomIndex];
 
   useEffect(() => {
-    if (!chartAreaEl) return;
-    const ro = new ResizeObserver(([entry]) => setChartWidth(entry.contentRect.width));
-    ro.observe(chartAreaEl);
-    setChartWidth(chartAreaEl.getBoundingClientRect().width);
+    if (!scrollContainerEl) return;
+    const update = () => {
+      // Subtract the 140px label column to get the chart-only viewport width
+      setContainerChartWidth(Math.max(0, scrollContainerEl.getBoundingClientRect().width - 140));
+    };
+    const ro = new ResizeObserver(update);
+    ro.observe(scrollContainerEl);
+    update();
     return () => ro.disconnect();
-  }, [chartAreaEl]);
+  }, [scrollContainerEl]);
+
+  const effectiveChartWidth = Math.max(660, containerChartWidth) * zoom;
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 200);
@@ -82,12 +96,12 @@ export function GanttChart({ steps }: Props) {
   useEffect(() => {
     if (selectedOrderId && !steps.some((s) => s.orderId === selectedOrderId)) {
       setSelectedOrderId(null);
+      setPendingDelayStepId(null);
     }
   }, [steps, selectedOrderId]);
 
   const activeOrderId = selectedOrderId ?? hoveredOrderId;
 
-  // Derive available kinds from actual data — never hardcode
   const availableKinds = useMemo(() => {
     const seen = new Set<string>();
     for (const s of steps) seen.add(s.kind);
@@ -110,12 +124,12 @@ export function GanttChart({ steps }: Props) {
 
   const totalMs = endTime - baseTime;
 
-  // Pixel-perfect positioning: all timestamps share the same rounding function,
-  // so toPx(endAt_A) === toPx(startAt_B) when they're equal — no subpixel gaps/overlaps.
   const toPx = useCallback(
     (ts: number) =>
-      chartWidth > 0 ? Math.round(((ts - baseTime) / totalMs) * chartWidth) : 0,
-    [chartWidth, baseTime, totalMs],
+      effectiveChartWidth > 0
+        ? Math.round(((ts - baseTime) / totalMs) * effectiveChartWidth)
+        : 0,
+    [effectiveChartWidth, baseTime, totalMs],
   );
 
   const rows = useMemo(() => {
@@ -134,7 +148,6 @@ export function GanttChart({ steps }: Props) {
     return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
   }, [steps]);
 
-  // Base step IDs that span more than one resource row
   const multiResourceBaseIds = useMemo(() => {
     const counts = new Map<string, number>();
     for (const s of steps) {
@@ -148,15 +161,15 @@ export function GanttChart({ steps }: Props) {
 
   const ticks = useMemo(() => {
     const MINUTE_INTERVALS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 300];
-    const MAX_TICKS = 12;
+    const maxTicks = Math.round(12 * zoom);
     const intervalMs =
-      (MINUTE_INTERVALS.find((m) => totalMs / (m * 60_000) <= MAX_TICKS) ?? 300) *
+      (MINUTE_INTERVALS.find((m) => totalMs / (m * 60_000) <= maxTicks) ?? 300) *
       60_000;
     const firstTick = Math.ceil(baseTime / intervalMs) * intervalMs;
     const result: number[] = [];
     for (let ts = firstTick; ts <= endTime; ts += intervalMs) result.push(ts);
     return result;
-  }, [baseTime, endTime, totalMs]);
+  }, [baseTime, endTime, totalMs, zoom]);
 
   const nowPct = ((now - baseTime) / totalMs) * 100;
   const showNow = nowPct >= 0 && nowPct <= 100;
@@ -172,6 +185,7 @@ export function GanttChart({ steps }: Props) {
   return (
     <div className="flex items-start gap-4">
       <div className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        {/* Toolbar: filters + zoom */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="flex gap-2">
             <button
@@ -198,20 +212,51 @@ export function GanttChart({ steps }: Props) {
               </button>
             ))}
           </div>
-          <div className="ml-auto flex items-center gap-3 text-xs text-zinc-500">
-            {availableKinds.map((kind) => (
-              <Legend key={kind} color={kindDotColor(kind)} label={kindLabel(kind)} />
-            ))}
+
+          {/* Zoom controls */}
+          <div className="ml-auto flex items-center gap-1">
+            <span className="text-xs text-zinc-500">Zoom</span>
+            <button
+              onClick={() => setZoomIndex((i) => Math.max(0, i - 1))}
+              disabled={zoomIndex === 0}
+              className="rounded px-2 py-0.5 text-sm font-bold text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              title="Dézoomer"
+            >
+              −
+            </button>
+            <button
+              onClick={() => setZoomIndex(0)}
+              className="w-10 rounded px-1 py-0.5 text-center font-mono text-xs text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              title="Réinitialiser le zoom"
+            >
+              ×{zoom % 1 === 0 ? zoom : zoom.toFixed(1)}
+            </button>
+            <button
+              onClick={() => setZoomIndex((i) => Math.min(ZOOM_LEVELS.length - 1, i + 1))}
+              disabled={zoomIndex === ZOOM_LEVELS.length - 1}
+              className="rounded px-2 py-0.5 text-sm font-bold text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              title="Zoomer"
+            >
+              +
+            </button>
+
+            <div className="ml-3 flex items-center gap-3 text-xs text-zinc-500">
+              {availableKinds.map((kind) => (
+                <Legend key={kind} color={kindDotColor(kind)} label={kindLabel(kind)} />
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <div className="min-w-[800px]">
+        {/* Chart */}
+        <div ref={setScrollContainerEl} className="overflow-x-auto">
+          <div style={{ width: effectiveChartWidth + 140 }}>
+            {/* Header: tick labels */}
             <div className="grid grid-cols-[140px_1fr] border-b border-zinc-200 pb-2 dark:border-zinc-800">
               <div className="text-xs font-medium uppercase tracking-wider text-zinc-500">
                 Ressource
               </div>
-              <div ref={setChartAreaEl} className="relative h-6">
+              <div className="relative h-6">
                 {ticks.map((ts) => {
                   const left = ((ts - baseTime) / totalMs) * 100;
                   return (
@@ -227,6 +272,7 @@ export function GanttChart({ steps }: Props) {
               </div>
             </div>
 
+            {/* Rows */}
             <div className="relative mt-2">
               {showNow && (
                 <div className="pointer-events-none absolute inset-0 z-10 grid grid-cols-[140px_1fr]">
@@ -289,6 +335,8 @@ export function GanttChart({ steps }: Props) {
                           isMultiResource &&
                           hoveredBaseStepId === baseId &&
                           !isSelected;
+                        // En_cours bars gettable for direct delay
+                        const isDelayable = step.status === "en_cours" && !!onDelayTask;
                         return (
                           <div
                             key={step.id}
@@ -298,13 +346,15 @@ export function GanttChart({ steps }: Props) {
                               width: `${widthPx}px`,
                               outline: isSiblingHovered
                                 ? "2px solid rgba(255,255,255,0.85)"
-                                : undefined,
+                                : isDelayable
+                                  ? "1px dashed rgba(255,255,255,0.5)"
+                                  : undefined,
                               outlineOffset: "1px",
                             }}
                             title={
                               isMultiResource
-                                ? `T${step.tableNumber} · ${step.recipeName} · ${step.stepName} (${kindLabel(step.kind)}) — étape multi-ressource`
-                                : `T${step.tableNumber} · ${step.recipeName} · ${step.stepName} (${kindLabel(step.kind)})`
+                                ? `T${step.tableNumber} · ${step.recipeName} · ${step.stepName} (${kindLabel(step.kind)}) — étape multi-ressource${isDelayable ? " · Cliquer pour déclarer un retard" : ""}`
+                                : `T${step.tableNumber} · ${step.recipeName} · ${step.stepName} (${kindLabel(step.kind)})${isDelayable ? " · Cliquer pour déclarer un retard" : ""}`
                             }
                             onMouseEnter={() => {
                               setHoveredOrderId(step.orderId);
@@ -314,11 +364,16 @@ export function GanttChart({ steps }: Props) {
                               setHoveredOrderId(null);
                               setHoveredBaseStepId(null);
                             }}
-                            onClick={() =>
-                              setSelectedOrderId((prev) =>
-                                prev === step.orderId ? null : step.orderId,
-                              )
-                            }
+                            onClick={() => {
+                              const newOrderId =
+                                selectedOrderId === step.orderId ? null : step.orderId;
+                              setSelectedOrderId(newOrderId);
+                              if (newOrderId && isDelayable) {
+                                setPendingDelayStepId(step.id);
+                              } else {
+                                setPendingDelayStepId(null);
+                              }
+                            }}
                           >
                             <span className="truncate text-[10px] font-semibold">
                               {step.stepName}
@@ -348,7 +403,9 @@ export function GanttChart({ steps }: Props) {
         <CommandeDetailPanel
           orderId={selectedOrderId}
           steps={steps.filter((s) => s.orderId === selectedOrderId)}
-          onClose={() => setSelectedOrderId(null)}
+          onClose={() => { setSelectedOrderId(null); setPendingDelayStepId(null); }}
+          onDelayTask={onDelayTask}
+          initialDelayStepId={pendingDelayStepId}
         />
       ) : null}
     </div>
@@ -359,11 +416,45 @@ function CommandeDetailPanel({
   orderId,
   steps,
   onClose,
+  onDelayTask,
+  initialDelayStepId,
 }: {
   orderId: string;
   steps: ScheduledStep[];
   onClose: () => void;
+  onDelayTask?: (ganttTaskId: string, additionalSeconds: number) => Promise<void>;
+  initialDelayStepId?: string | null;
 }) {
+  const [delayingStepId, setDelayingStepId] = useState<string | null>(null);
+  const [delayMinutes, setDelayMinutes] = useState("5");
+  const [isDelaying, setIsDelaying] = useState(false);
+  const [delayError, setDelayError] = useState<string | null>(null);
+
+  // Auto-open delay form when the user clicks directly on an en_cours bar
+  useEffect(() => {
+    if (initialDelayStepId) {
+      setDelayingStepId(initialDelayStepId);
+      setDelayMinutes("5");
+      setDelayError(null);
+    }
+  }, [initialDelayStepId]);
+
+  async function handleConfirmDelay(stepId: string) {
+    if (!onDelayTask) return;
+    const minutes = parseInt(delayMinutes, 10);
+    if (isNaN(minutes) || minutes <= 0) return;
+    setIsDelaying(true);
+    setDelayError(null);
+    try {
+      await onDelayTask(getBaseStepId(stepId), minutes * 60);
+      setDelayingStepId(null);
+    } catch {
+      setDelayError("Erreur lors de la déclaration du retard.");
+    } finally {
+      setIsDelaying(false);
+    }
+  }
+
   if (steps.length === 0) return null;
 
   const sorted = [...steps].sort((a, b) => a.startAt - b.startAt);
@@ -428,27 +519,75 @@ function CommandeDetailPanel({
               {dish}
             </h4>
             <ol className="mt-2 space-y-1.5">
-              {dishSteps.map((s) => (
-                <li
-                  key={s.id}
-                  className="flex items-center gap-2 text-xs"
-                >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-sm ${kindDotColor(s.kind)}`}
-                  />
-                  <span className="flex-1 truncate text-zinc-700 dark:text-zinc-300">
-                    {s.stepName}
-                  </span>
-                  <span className="font-mono tabular-nums text-zinc-500">
-                    {formatTime(s.startAt)}
-                  </span>
-                  <span
-                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${statusBadge(s.status)}`}
-                  >
-                    {statusLabel(s.status)}
-                  </span>
-                </li>
-              ))}
+              {dishSteps.map((s) => {
+                const isBeingDelayed = delayingStepId === s.id;
+                const isNoResource = s.resourceId.startsWith("__no_resource__");
+                return (
+                  <li key={s.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className={`h-2 w-2 shrink-0 rounded-sm ${kindDotColor(s.kind)}`} />
+                    <span className="flex-1 truncate text-zinc-700 dark:text-zinc-300">
+                      {s.stepName}
+                      {!isNoResource && (
+                        <span className="ml-1 text-zinc-400 dark:text-zinc-500">
+                          · {s.resourceLabel}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono tabular-nums text-zinc-500">
+                      {formatTime(s.startAt)}
+                    </span>
+                    <span
+                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${statusBadge(s.status)}`}
+                    >
+                      {statusLabel(s.status)}
+                    </span>
+
+                    {s.status === "en_cours" && onDelayTask && (
+                      isBeingDelayed ? (
+                        <div className="flex w-full items-center gap-1 pl-3.5">
+                          <input
+                            type="number"
+                            min="1"
+                            max="120"
+                            value={delayMinutes}
+                            onChange={(e) => setDelayMinutes(e.target.value)}
+                            className="w-14 rounded border border-zinc-300 px-1 py-0.5 text-xs tabular-nums dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                          />
+                          <span className="text-zinc-500">min</span>
+                          <button
+                            onClick={() => handleConfirmDelay(s.id)}
+                            disabled={isDelaying}
+                            className="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+                          >
+                            {isDelaying ? "…" : "✓"}
+                          </button>
+                          <button
+                            onClick={() => { setDelayingStepId(null); setDelayError(null); }}
+                            className="rounded px-1 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                          >
+                            ✕
+                          </button>
+                          {delayError && (
+                            <span className="text-[10px] text-red-500">{delayError}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setDelayingStepId(s.id);
+                            setDelayMinutes("5");
+                            setDelayError(null);
+                          }}
+                          title="Déclarer un retard"
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                        >
+                          ⏱ retard
+                        </button>
+                      )
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           </section>
         ))}

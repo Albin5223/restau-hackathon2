@@ -7,7 +7,8 @@ import { GanttChart } from "@/components/GanttChart";
 import { useResources } from "@/components/ResourcesProvider";
 import { useTime } from "@/components/TimeProvider";
 import { api } from "@/lib/api";
-import type { AutoSimLog, AutoSimStatus } from "@/lib/api";
+import type { AutoSimLog, AutoSimStatus, SimulationStats, WaitEntry } from "@/lib/api";
+import { SimulationCharts } from "@/components/SimulationCharts";
 import { missingResources } from "@/lib/recipes";
 import type {
   BackendCommandeResult,
@@ -104,10 +105,241 @@ function LogLine({ log }: { log: AutoSimLog }) {
   );
 }
 
+const EMPTY_STATS: SimulationStats = {
+  totalArrivals: 0,
+  totalRejected: 0,
+  totalOrdersPlaced: 0,
+  totalTablesServed: 0,
+  totalClientsServed: 0,
+  avgWaitTimeSec: 0,
+  rejectionRate: 0,
+  rejectionReasons: {},
+  resourceUsageSeconds: {},
+  recentWaitTimes: [],
+  timeSeries: [],
+};
+
+function StatBox({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
+  return (
+    <div className="rounded-md bg-zinc-50 p-3 dark:bg-zinc-900">
+      <p className="mb-1 text-xs text-zinc-500">{label}</p>
+      <p className={`text-xl font-mono font-bold ${highlight ? "text-red-600 dark:text-red-400" : "text-zinc-900 dark:text-zinc-50"}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function StatsPanel({ stats, isLive, onDismiss }: { stats: SimulationStats; isLive: boolean; onDismiss?: () => void }) {
+  const [tab, setTab] = useState<"stats" | "charts">("stats");
+  const totalWaitSec = Math.round(stats.avgWaitTimeSec);
+  const waitMin = Math.floor(totalWaitSec / 60);
+  const waitSec = totalWaitSec % 60;
+
+  const topResources = Object.entries(stats.resourceUsageSeconds)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 6);
+  const maxUsage = topResources[0]?.[1] ?? 1;
+
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+            Statistiques de performance
+          </h2>
+          {isLive ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+              En direct
+            </span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                Résultats finaux
+              </span>
+              {onDismiss && (
+                <button
+                  onClick={onDismiss}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                  title="Effacer les statistiques"
+                >
+                  Effacer
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-0.5 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+          {(["stats", "charts"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                tab === t
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              }`}
+            >
+              {t === "stats" ? "Chiffres" : "Graphiques"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "charts" ? (
+        <SimulationCharts
+          timeSeries={stats.timeSeries}
+          recentWaitTimes={stats.recentWaitTimes}
+          avgWaitTimeSec={stats.avgWaitTimeSec}
+        />
+      ) : null}
+      {tab === "stats" ? (<>
+
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <StatBox label="Arrivées" value={stats.totalArrivals} />
+        <StatBox label="Refusés" value={stats.totalRejected} highlight={stats.totalRejected > 0} />
+        <StatBox label="Commandes" value={stats.totalOrdersPlaced} />
+        <StatBox label="Tables servies" value={stats.totalTablesServed} />
+        <StatBox label="Clients servis" value={stats.totalClientsServed} />
+        <StatBox
+          label="Taux de refus"
+          value={`${stats.rejectionRate.toFixed(1)} %`}
+          highlight={stats.rejectionRate > 20}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-md bg-zinc-50 p-4 dark:bg-zinc-900">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Temps d&apos;attente moyen (arrivée → service)
+          </p>
+          {stats.avgWaitTimeSec > 0 ? (() => {
+            const thresholds = [
+              { max: 600,  label: "Excellent",  bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
+              { max: 1200, label: "Acceptable", bar: "bg-amber-400",   text: "text-amber-600 dark:text-amber-400",    bg: "bg-amber-50 dark:bg-amber-950/40" },
+              { max: Infinity, label: "Élevé",  bar: "bg-red-500",     text: "text-red-600 dark:text-red-400",        bg: "bg-red-50 dark:bg-red-950/40" },
+            ];
+            const t = thresholds.find((th) => stats.avgWaitTimeSec < th.max)!;
+            const barPct = Math.min(100, (stats.avgWaitTimeSec / 1800) * 100);
+            return (
+              <div className={`rounded-md px-3 py-2 ${t.bg}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={`text-2xl font-mono font-bold ${t.text}`}>
+                    {waitMin > 0 ? `${waitMin}m ` : ""}{waitSec}s
+                  </span>
+                  <span className={`text-xs font-semibold ${t.text}`}>{t.label}</span>
+                </div>
+                <div className="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700">
+                  <div className={`h-1.5 rounded-full transition-all ${t.bar}`} style={{ width: `${barPct}%` }} />
+                </div>
+                <p className="mt-1 text-xs text-zinc-400">Seuil cible : 10 min (600 s)</p>
+              </div>
+            );
+          })() : (
+            <p className="text-sm text-zinc-400">Aucune table servie pour l&apos;instant</p>
+          )}
+          {stats.recentWaitTimes.length > 0 && (
+            <div className="mt-3 space-y-1">
+              <p className="text-xs text-zinc-400">Dernières commandes servies :</p>
+              <div className="max-h-32 overflow-y-auto space-y-0.5">
+                {[...stats.recentWaitTimes].reverse().slice(0, 20).map((w: WaitEntry, i: number) => {
+                  const m = Math.floor(w.waitTimeSec / 60);
+                  const s = Math.round(w.waitTimeSec % 60);
+                  const aboveAvg = stats.avgWaitTimeSec > 0 && w.waitTimeSec > stats.avgWaitTimeSec;
+                  return (
+                    <div key={i} className="flex justify-between text-xs">
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        T{w.tableNumber}{w.partySize > 0 ? ` · ${w.partySize}p` : ""}
+                      </span>
+                      <span className={`font-mono font-medium ${aboveAvg ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                        {m > 0 ? `${m}m ` : ""}{s}s
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-md bg-zinc-50 p-4 dark:bg-zinc-900">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Ressources les plus sollicitées
+          </p>
+          {topResources.length > 0 ? (
+            <div className="space-y-2">
+              {topResources.map(([name, secs]) => {
+                const pct = (secs / maxUsage) * 100;
+                const m = Math.floor(secs / 60);
+                const s = secs % 60;
+                return (
+                  <div key={name}>
+                    <div className="mb-0.5 flex justify-between text-xs">
+                      <span className="text-zinc-700 dark:text-zinc-300">{name}</span>
+                      <span className="font-mono text-zinc-500">
+                        {m > 0 ? `${m}m ` : ""}
+                        {s}s
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700">
+                      <div
+                        className="h-1.5 rounded-full bg-zinc-800 transition-all dark:bg-zinc-200"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-400">Aucune tâche complétée pour l&apos;instant</p>
+          )}
+        </div>
+      </div>
+
+      {Object.keys(stats.rejectionReasons).length > 0 && (
+        <div className="mt-4 rounded-md border border-red-100 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950">
+          <p className="mb-1 text-xs font-semibold text-red-800 dark:text-red-200">
+            Causes de refus
+          </p>
+          <div className="space-y-0.5">
+            {Object.entries(stats.rejectionReasons).map(([reason, count]) => (
+              <div key={reason} className="flex justify-between text-xs text-red-700 dark:text-red-300">
+                <span>{reason}</span>
+                <span className="font-mono font-semibold">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </>) : null}
+    </section>
+  );
+}
+
 function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) => void }) {
   const PARAMS_STORAGE_KEY = "autoSimParams";
+  const FINAL_STATS_KEY = "autoSimFinalStats";
   const { resourceTypes } = useResources();
-  const [status, setStatus] = useState<AutoSimStatus>({ active: false, logs: [] });
+  const [status, setStatus] = useState<AutoSimStatus>({ active: false, logs: [], stats: EMPTY_STATS });
+
+  function readStoredFinalStats(): SimulationStats | null {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(FINAL_STATS_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== "object") return null;
+      const s = parsed as Record<string, unknown>;
+      if (typeof s.totalArrivals !== "number" || !Array.isArray(s.recentWaitTimes)) return null;
+      return parsed as SimulationStats;
+    } catch {
+      return null;
+    }
+  }
+
+  const [finalStats, setFinalStats] = useState<SimulationStats | null>(() => readStoredFinalStats());
   const [ganttSteps, setGanttSteps] = useState<ScheduledStep[]>([]);
   const [menu, setMenu] = useState<Recipe[]>([]);
 
@@ -191,6 +423,8 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
             paramsLoadedRef.current = true;
           }
           if (!s.active && prevActiveRef.current) {
+            setFinalStats(s.stats);
+            window.localStorage.setItem(FINAL_STATS_KEY, JSON.stringify(s.stats));
             clearPersistedParams();
             paramsLoadedRef.current = false;
           }
@@ -246,6 +480,8 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
     if (hasOngoingTasks) return;
     setStarting(true);
     setError(null);
+    setFinalStats(null);
+    window.localStorage.removeItem(FINAL_STATS_KEY);
     try {
       persistParams(params);
       await api.simulation.start(params);
@@ -433,6 +669,18 @@ function AutoSimulation({ onStatusChange }: { onStatusChange: (active: boolean) 
         </div>
       </section>
     </div>
+
+    {/* Statistiques de performance */}
+    {(status.active || finalStats) ? (
+      <StatsPanel
+        stats={status.active ? status.stats : finalStats!}
+        isLive={status.active}
+        onDismiss={!status.active ? () => {
+          setFinalStats(null);
+          window.localStorage.removeItem(FINAL_STATS_KEY);
+        } : undefined}
+      />
+    ) : null}
 
     {/* Gantt de cuisine en temps réel */}
     {ganttSteps.length > 0 ? (

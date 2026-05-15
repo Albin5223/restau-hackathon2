@@ -120,6 +120,39 @@ public class OrderService {
         return result;
     }
 
+    /**
+     * Replanifie les tâches en attente de toutes les commandes actives sans ajouter de nouvelle commande.
+     * À appeler après la libération d'une table pour libérer les ressources et optimiser les plannings restants.
+     */
+    @Transactional
+    public void replanActiveOrders() {
+        long realNow = System.currentTimeMillis();
+        long offsetMs = timeShiftService.getOffsetMs();
+        long now = ((realNow - offsetMs) / 1000) * 1000;
+
+        List<Order> activeOrders = orders.getActiveOrders();
+        if (activeOrders.isEmpty()) return;
+
+        List<OrderRequest> pendingOrders = new ArrayList<>();
+        Map<String, Long> taskMinStarts = new HashMap<>();
+        List<OccupiedInterval> runningIntervals = new ArrayList<>();
+        buildPendingOrdersAndIntervals(activeOrders, now, pendingOrders, taskMinStarts, runningIntervals);
+
+        if (pendingOrders.isEmpty()) return;
+
+        logger.info("[SERVICE] Replanification après libération de table : {} commandes actives, {} avec tâches en attente",
+                activeOrders.size(), pendingOrders.size());
+
+        List<OrderSchedule> schedules = scheduler.scheduleAll(pendingOrders, runningIntervals, taskMinStarts);
+
+        for (int i = 0; i < pendingOrders.size(); i++) {
+            Order commande = findOrder(activeOrders, pendingOrders.get(i).orderId());
+            if (commande != null) {
+                mergeAndUpdateSchedule(commande, schedules.get(i), now);
+            }
+        }
+    }
+
     // ─── Construction des ordres en attente à partir des commandes actives ────
 
     /**

@@ -7,6 +7,7 @@ import fr.ultime.restoptim.application.mapper.TableMapper;
 import fr.ultime.restoptim.domain.model.table.TableId;
 import fr.ultime.restoptim.domain.spi.Orders;
 import fr.ultime.restoptim.domain.service.AutoSimulationService;
+import fr.ultime.restoptim.domain.service.OrderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,6 +33,7 @@ public class TableController {
     private final Tables tables;
     private final Orders orders;
     private final AutoSimulationService autoSimulationService;
+    private final OrderService orderService;
     private final TableMapper tableMapper;
 
     private void checkNotInAutoSim() {
@@ -79,6 +81,7 @@ public class TableController {
         }
         Table updated = new Table(table.id(), table.number(), table.seats(), TableStatus.LIBRE, null, null);
         tables.save(updated);
+        orderService.replanActiveOrders();
         return tableMapper.toDto(updated);
     }
 

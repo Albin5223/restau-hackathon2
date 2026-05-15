@@ -276,6 +276,7 @@ public class AutoSimulationService {
             }
             tables.save(new Table(table.id(), table.number(), table.seats(), TableStatus.LIBRE, null, null));
             addLog("left", "Table " + tableNumber + " libérée — les clients sont partis");
+            orderService.replanActiveOrders();
         } catch (Exception e) {
             logger.error("[AUTO-SIM] Erreur libération table {}", tableNumber, e);
         }
